@@ -1,16 +1,18 @@
 // This is the main project file for VC++ application project 
 // generated using an Application Wizard.
 
-#include "stdafx.h"
-#using <mscorlib.dll>
-using namespace System;
+//#include "stdafx.h"
+//#using <mscorlib.dll>
+//using namespace System;
+
+using namespace std;
 
 #include "THEMBISA.h"
 #include "StatFunctions.h"
 #include "randomc.h"
 #include <time.h>
 #include <cstdlib>
-//#include <omp.h>
+#include <iostream>
 #include <cstring>
 #include <sstream>
 #include <string>
@@ -23,7 +25,7 @@ using namespace System;
   #define MKDIR(path) mkdir((path).c_str(), 0755)
 #endif
 
-int _tmain()
+int main()
 {
 	int iy; 
 	clock_t start, finish;
@@ -2400,6 +2402,48 @@ void AdultTB::UpdateDemog()
 	// 10-year olds are handled in MoveIntoAdultTB, but set to 0 here for simplicity.
 	for (is = 0; is < 44; is++) {
 		HIVstage[0][is] = 0.0;
+	}
+}
+
+ChildTB::ChildTB(int Gender)
+{
+	Sex = Gender;
+}
+
+void ChildTB::SetStartProfile()
+{
+	int im, is;
+
+	for (im = 0; im < 132; im++) {
+		ChildHIVstage[im][0] = Total[im];
+		for (is = 1; is < 13; is++) { ChildHIVstage[im][is] = 0.0; }
+		}
+}
+
+void ChildTB::UpdateStartProfile()
+{
+	int im, is;
+
+	for (im = 0; im < 132; im++) {
+		for (is = 0; is < 13; is++) {
+			ChildHIVstage[im][is] = ChildHIVstage_E[im][is];
+		}
+		//Total[ia] = Total_E[ia];
+	}
+}
+
+void Child::UpdateEndProfile()
+{
+	// This function should only be called as a first step prior to calculating the transitions
+	// between the TB states.
+
+	int im, is;
+
+	for (im = 0; im < 132; im++) {
+		for (is = 0; is < 13; is++) {
+			ChildHIVstage_E[im][is] = ChildHIVstage[im][is];
+		}
+		Total_E[im] = Total[im];
 	}
 }
 
@@ -11041,6 +11085,432 @@ void UpdateTBrecovLT(AdultTB* PostRxLT, AdultTB* Active1, AdultTB* Active2, Adul
 	}
 }
 
+void UpdateChildTBsuscep(ChildTB* Suscep, ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev)
+{
+	int im, is, ig;
+	double temp, temp2, newTBactive;
+
+	ig = Suscep->Sex;
+	for (im = 0; im < 132; im++) {
+		for (is = 0; is < 13; is++) { // Check HIV stage, might want to simplify to HIVpos vs HIVneg
+			if (is == 0) { temp2 = InitActiveTBSev[0]; }
+			else { temp2 = InitActiveTBSev[1]; }
+			temp = Suscep->ChildHIVstage[im][is] * RateNewTBinfection[im][ig]; //Figure out ages for RateNewTBInfection = used to be ia+10
+			Suscep->ChildHIVstage_E[im][is] = Suscep->ChildHIVstage_E[im][is] - temp;
+			newTBactive = PropFastProg * HIVeffectTBinc[is] * TBincAdjByAgeSex[ia][ig]; //Removed TB adjustment for age and sex - create one just for age and split TB pop 50/50 for sex
+			if (newTBactive > 1.0) { newTBactive = 1.0; }
+			Latent->ChildHIVstage_E[im][is] += temp * (1.0 - newTBactive);
+			Sev->ChildHIVstage_E[im][is] += temp * newTBactive * temp2;
+			NonSev->ChildHIVstage_E[im][is] += temp * newTBactive * (1.0 - temp2);
+			if (FixedUncertainty == 1) {
+				NewActiveChildTBbyAgeSex[im][ig] += temp * newTBactive;
+				if (is >= 5) { NewHIVposChildTBbyAgeSex[im][ig] += temp * newTBactive; } // UPDATE is here to align with child hiv states
+				if (is >= 20) { NewChildTBonARTbyAgeSex[im][ig] += temp * newTBactive; } // UPDATE is here to align with child hiv states
+			}
+		}
+	}
+}
+
+void UpdateChildTBlatent(ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev, ChildTB* IPT, ChildTB* Suscep, int IPTind)
+{
+	int im, is, ig, iy;
+	double temp, temp2, temp3, temp3b, newTBactive, TBincidence, ReactivationRate, IPTswitch, CurePropn;
+
+	iy = CurrYear - StartYear;
+	ig = Latent->Sex;
+	ReactivationRate = Reactivation;
+	if (IPTind == 1) { ReactivationRate *= (1.0 - IPTefficacy); }
+	if (IPTind == 1) { CurePropn = TPTfraction3HP[iy] * Cure3HP * 0.333 / (0.333 + MnthlyTPTdropout); }
+	else { CurePropn = 0.0; }
+	IPTswitch = 0.0;
+	if (IPTind == 1 && IPTduration[iy] > 0.0) { IPTswitch = 1.0 / CurrDurTPTprotection; }
+	if (IPTind == 0 && BaseIPTuptake[iy] > 0.0) { IPTswitch = BaseIPTuptake[iy]; }
+	for (im = 0; im < 132; im++) {
+		for (is = 0; is < 13; is++) {
+			if (is < 5) { temp2 = InitActiveTBSev[0]; } // UPDATE is here to align with child hiv states and below!!
+			else { temp2 = InitActiveTBSev[1]; }
+			newTBactive = PropFastProg * HIVeffectTBinc[is] * TBincAdjByAgeSex[ia][ig];
+			if (newTBactive > 1.0) { newTBactive = 1.0; }
+			if (IPTind == 1) { newTBactive *= (1.0 - IPTefficacy); }
+			TBincidence = RateNewTBinfection[ia + 10][ig] * (1.0 - PartialImmunHIVneg *
+				HIVeffectTBimm[is]) * newTBactive + ReactivationRate * HIVeffectTBinc[is] * TBincAdjByAgeSex[ia][ig] / 12.0;
+			if (TBincidence > 1.0) { TBincidence = 1.0; }
+			temp = Latent->ChildHIVstage[im][is] * TBincidence;
+			if (IPTswitch > 0 && IPTind == 1) { temp3 = Latent->ChildHIVstage_E[im][is] * IPTswitch; }
+			else if (IPTswitch > 0 && IPTind == 0 && is > 15) {
+				temp3 = Latent->ChildHIVstage_E[im][is] * IPTswitch * HIVeffectIPTstart[is];
+				if (IPTswitch * HIVeffectIPTstart[is] > 1.0) { temp3 = Latent->ChildHIVstage_E[im][is]; }
+			}
+			else { temp3 = 0.0; }
+			if (IPTind == 0 && PropnHHcontactTPT[iy] > 0) {
+				temp3 += Latent->ChildHIVstage_E[im][is] * HHscreeningProbNeg * PropnHHcontactTPT[iy];
+				temp3b = Latent->ChildHIVstage_E[im][is] * HHscreeningProbNeg * PropnHHcontactTPT[iy];
+			}
+			Latent->ChildHIVstage_E[im][is] = Latent->ChildHIVstage_E[im][is] - temp - temp3;
+			Sev->ChildHIVstage_E[im][is] += temp * temp2;
+			NonSev->ChildHIVstage_E[im][is] += temp * (1.0 - temp2);
+			if (IPTind == 1 && CurePropn > 0) {
+				Suscep->ChildHIVstage_E[im][is] += temp3 * CurePropn;
+				IPT->ChildHIVstage_E[im][is] += temp3 * (1.0 - CurePropn);
+			}
+			else { IPT->ChildHIVstage_E[im][is] += temp3; }
+			if (FixedUncertainty == 1) {
+				NewActiveTBbyAgeSex[im][ig] += temp;
+				if (is >= 5) { NewHIVposTBbyAgeSex[im][ig] += temp; }
+				if (is >= 20) { NewTBonARTbyAgeSex[im][ig] += temp; }
+				if (im >= 5) {
+					NewTBreactivation += Latent->ChildHIVstage[im][is] * ReactivationRate * HIVeffectTBinc[is] *
+						TBincAdjByAgeSex[im][ig] / 12.0;
+				}
+				if (IPTind == 0) {
+					NewIPT_TSTpos += temp3;
+					NewTPT_HH += temp3b;
+				}
+			}
+		}
+	}
+}
+
+void UpdateChildTBactive(ChildTB* Active, ChildTB* Latent, ChildTB* Treated, int Sev)
+{
+	int im, is, iy, ig, id, CD4stage; //CHECK IF NEED ALL OF THESE
+	double ScreenTemp[2], RxRate, RxRate1, RxRate2, RxRate3, MortRate, RecoveryRate, AdjF; //CHECK IF NEED ALL OF THESE
+	double temp1, temp1b, temp1c, temp1d, temp1e, temp2, temp3, temp4; //CHECK IF NEED ALL OF THESE
+
+	iy = CurrYear - StartYear;
+	ig = Active->Sex;
+	if (Sev == 0) {
+		MortRate = MortalitySmNeg / 12.0; // Update params to be Sev vs NonSev
+		RecoveryRate = NaturalRecSmNeg / 12.0;
+	}
+	else {
+		MortRate = MortalitySmPos / 12.0;
+		RecoveryRate = NaturalRecSmPos / 12.0;
+	}
+	// Adjustment for improving mortality as diagnosis rates increase
+	if (CurrYear >= 2000) { MortRate *= AnnMortTB_RxCurr[0] / AnnMortTB_Rx[0]; }
+
+	AdjF = 1.0;
+	ScreenTemp[0] = HealthSeekingGen * Cough2wkActiveSmNeg * (TBsymptomScreened[iy] /
+		RRscreenSymptoms) / 12.0;
+	ScreenTemp[1] = HealthSeekingTB * TBsymptomScreened[iy] / 12.0;
+	if (Sev == 1) {
+		ScreenTemp[0] *= RRsymptomsSmPos;
+		ScreenTemp[1] *= RRsymptomsSmPos;
+	}
+	if (ig == 1) { // Not applicable for children - outcomes are independent of sex but keep for now
+		AdjF = RRscreenF;
+		ScreenTemp[0] *= RRhealthSeekingFem * RRscreenF;
+		ScreenTemp[1] *= RRhealthSeekingFem * RRscreenF;
+	}
+	for (im = 0; im < 132; im++) {
+		for (is = 0; is < 13; is++) {
+			if (is == 0) { // These all need to be updated depending on which route we go for health
+						   // seeking in children + confirm HIV stage
+				RxRate1 = (ScreenTemp[0] + ScreenTemp[1]) * CurrSeTB[SmPos][0];
+				RxRate2 = (HealthSeekingGen * Cough2wkActiveSmNeg * (1.0 - TBsymptomScreened[iy] * AdjF /
+					RRscreenSymptoms) * EmpiricRx[0][1] + HealthSeekingTB * (1.0 - TBsymptomScreened[iy] *
+					AdjF) * EmpiricRx[1][1]) * pow(RRhealthSeekingFem, ig) * pow(RRsymptomsSmPos, SmPos) *
+					EmpiricalAdj / 12.0;
+				RxRate3 = (ScreenTemp[0] * EmpiricRxNeg[0][1] + ScreenTemp[1] * EmpiricRxNeg[1][1]) *
+					(1.0 - EmpiricRednXpert * (1.0 - MicroscopyPropn[iy])) * (1.0 - CurrSeTB[SmPos][0]) *
+					EmpiricalAdj;
+			}
+			else {
+				RxRate1 = (ScreenTemp[0] + ScreenTemp[1]) * RRhealthSeekingHIV * CurrSeTB[SmPos][1];
+				RxRate2 = (HealthSeekingGen * Cough2wkActiveSmNeg * (1.0 - TBsymptomScreened[iy] * AdjF /
+					RRscreenSymptoms) * EmpiricRx[0][1] + HealthSeekingTB * (1.0 - TBsymptomScreened[iy] *
+					AdjF) * EmpiricRx[1][1]) * RRhealthSeekingHIV * pow(RRhealthSeekingFem, ig) *
+					pow(RRsymptomsSmPos, SmPos) * EmpiricalAdj / 12.0;
+				RxRate3 = (ScreenTemp[0] * EmpiricRxNeg[0][1] + ScreenTemp[1] * EmpiricRxNeg[1][1]) *
+					(1.0 - EmpiricRednXpert * (1.0 - MicroscopyPropn[iy])) * RRhealthSeekingHIV *
+					(1.0 - CurrSeTB[SmPos][1]) * EmpiricalAdj;
+			}
+			if (Sev == 1) { TBadultRxSmDiag[iy] += Active->ChildHIVstage[im][is] * RxRate1; }
+			RxRate = RxRate1 * (1.0 - CurrInitLTFU) + RxRate2 + RxRate3;
+			// Update calibration conditions below!
+			if ((FixedUncertainty == 1 || CalibTBdiagnosesA == 1 || CalibTBcasesA == 1 ||
+				CalibETRdeathsA == 1 || CalibHIVprevETR == 1 || CalibRifResPropn == 1) && im >= 5) {
+				TBadultLabDiag[iy] += Active->ChildHIVstage[im][is] * RxRate1;
+				if (is >= 5) { TBadultRxHIV[iy][ig] += Active->ChildHIVstage[im][is] * RxRate; }
+				TBadultRxBy5yr[iy][im / 5 - 1][ig] += Active->ChildHIVstage[im][is] * RxRate;
+				NewEmpiricTB[0] += Active->ChildHIVstage[im][is] * RxRate2;
+				NewEmpiricTB[1] += Active->ChildHIVstage[im][is] * RxRate3;
+			}
+			temp1 = Active->ChildHIVstage[im][is] * RxRate;
+			if (PropnHHcontactScreened[iy] > 0.0) {
+				temp1b = Active->ChildHIVstage[im][is] * HHscreeningProb * CurrSeTB_HHC[SmPos] *
+					(1.0 - CurrInitLTFU) * HHcontactRxUptake;
+			}
+			else { temp1b = 0.0; }
+			if (RateART_TBscreened[iy] > 0.0 && is >= 20 && is < 40) {
+				CD4stage = (is - 20) / 5;
+				id = is - 20 - CD4stage * 5;
+				temp1c = Active->ChildHIVstage[im][is] * OnARTbyIntDur[id][ig][ia] * (RateART_TBscreened[iy] / 12.0) *
+					CurrSeTB_ART[SmPos] * (1.0 - CurrInitLTFU);
+			}
+			else { temp1c = 0.0; }
+			if (RatePrevTBscreened[iy] > 0.0) {
+				temp1d = Active->ChildHIVstage[im][is] * RelapseTBpropnLastYr * (RatePrevTBscreened[iy] / 12.0) *
+					CurrSeTBprev[SmPos] * (1.0 - CurrInitLTFU);
+			}
+			else { temp1d = 0.0; }
+			if (RateD2Dscreen[iy] > 0.0) {
+				temp1e = Active->ChildHIVstage[im][is] * (RateD2Dscreen[iy] / 12.0) *
+					CurrSeTB_D2D[SmPos] * (1.0 - CurrInitLTFU) * HHcontactRxUptake;
+			}
+			else { temp1e = 0.0; }
+			if (Sev == 1) { SmPosRxScreen[iy] += temp1b + temp1c + temp1d + temp1e; }
+			temp2 = Active->ChildHIVstage[im][is] * RecoveryRate * HIVeffectTBrecov[is];
+			temp3 = Active->ChildHIVstage[im][is] * MortRate * RR_TBmortByAge[im] * HIVeffectTBmort[is];
+			temp4 = temp1 + temp1b + temp1c + temp1d + temp1e + temp2 + temp3;
+			if (temp4 > Active->ChildHIVstage[im][is]) {
+				temp1 *= Active->ChildHIVstage[im][is] / temp4;
+				temp1b *= Active->ChildHIVstage[im][is] / temp4;
+				temp1c *= Active->ChildHIVstage[im][is] / temp4;
+				temp1d *= Active->ChildHIVstage[im][is] / temp4;
+				temp1e *= Active->ChildHIVstage[im][is] / temp4;
+				temp2 *= Active->ChildHIVstage[im][is] / temp4;
+				temp3 *= Active->ChildHIVstage[im][is] / temp4;
+			}
+			if (((PropnHHcontactScreened[iy + 1] > 0.0 || NutritionSupportHHcontacts[iy + 1] > 0.0) && CurrMonth == 11) ||
+				PropnHHcontactScreened[iy] > 0.0) {
+				TBindexCasesLastMonth += temp1;
+			}
+			Active->ChildHIVstage_E[im][is] = Active->ChildHIVstage_E[im][is] - (temp1 + temp1b + temp1c +
+				temp1d + temp1e + temp2 + temp3);
+			Latent->ChildHIVstage_E[im][is] += temp2;
+			Treated->ChildHIVstage_E[im][is] += temp1 + temp1b + temp1c + temp1d + temp1e;
+			Treated->NewEntrants[im][is] += temp1 + temp1b + temp1c + temp1d + temp1e;
+			
+			if ((FixedUncertainty == 1 || CalibTBdeathsA == 1) && im >= 5) {
+				TBadultMortBy5yr[iy][im / 5 - 1][ig] += temp3;
+			}
+			if (FixedUncertainty == 1) {
+				if (SmPos == 0) { TBmortSmNeg[im][ig] += temp3; }
+				if (SmPos == 1) { TBmortSmPos[im][ig] += temp3; }
+			}
+			if (FixedUncertainty == 1) {
+				NewRxACF[SmPos] += temp1b;
+				NewRxART_ICF[SmPos] += temp1c;
+				NewRxTBscreenPrev[SmPos] += temp1d;
+				NewRxTBscreenD2D[SmPos] += temp1e;
+			}
+			if (im >= 5 && is >= 5) {
+				TBdeathsAdultHIV[iy] += temp3;
+			}
+		}
+	}
+}
+
+void UpdateChildTBtreated(ChildTB* Treated, ChildTB* Active1, ChildTB* Active2, ChildTB* PostRx, ChildTB* IPT)
+{
+	// All DR-TB code has been removed - not considering it for this iteration
+	int ia, is, ig, iy;
+	double MortRate, DropoutRate, CureRate, ReturnToActive, OddsFail[2];
+	double temp, temp1, temp2, temp3, temp3b, temp4, temp4b, temp5, InitMortPropn, FullCure, PartialCure;
+
+	ig = Treated->Sex;
+	iy = CurrYear - StartYear;
+
+	DropoutRate = (DOTrollout[iy] + (1.0 - DOTrollout[iy]) / (RRdefaultDOT + (1.0 - RRdefaultDOT) *
+		(1.0 - DOTSeffectivenessAdj))) * AnnDropoutTB_Rx[ig] / 12.0;
+	if (CurrYear > 2021) { DropoutRate *= UltTBdefaultAdj; }
+	else if (CurrYear > 2016) { DropoutRate *= 0.2 * ((2021 - CurrYear) + UltTBdefaultAdj * (CurrYear - 2016)); }
+	//if (CurrYear >= 2023){ DropoutRate *= 0.5; }
+	FullCure = TBfullRxCure;
+	PartialCure = TBpartialRxCure;
+	if (VaryFutureInterventionsTB == 1 && CurrYear >= 2024) { // Need to confirm interventions file before implementation here
+		FullCure = 1.0 / (1.0 + (1.0 - TBfullRxCure) / (TBfullRxCure * FutureInterventionsTB.out[CurrSim - 1][29]));
+		PartialCure = 1.0 / (1.0 + (1.0 - TBpartialRxCure) / (TBpartialRxCure * FutureInterventionsTB.out[CurrSim - 1][29]));
+		if (CurrYear < 2028) {
+			FullCure = 0.2 * (TBfullRxCure * (2028 - CurrYear) + FullCure * (CurrYear - 2023));
+			PartialCure = 0.2 * (TBpartialRxCure * (2028 - CurrYear) + PartialCure * (CurrYear - 2023));
+		}
+	}
+	CureRate = PartialCure * DropoutRate + FullCure * (1.0 / Dur1stLineRxTB[iy]);
+	ReturnToActive = (1.0 - PartialCure) * DropoutRate + (1.0 - FullCure) * (1.0 / Dur1stLineRxTB[iy]);
+	for (im = 0; im < 132; im++) {
+		for (is = 0; is < 13; is++) {
+			if (is == 0) { temp = InitActiveTBSev[0]; }
+			else { temp = InitActiveTBSev[1]; }
+			MortRate = (AnnMortTB_RxCurr[ig] / 12.0) * RR_TBmortByAge[im] * HIVeffectTBmort[is];
+			if (Dur1stLineRxTB[iy] == 4) { MortRate *= 1.25; }
+			InitMortPropn = MortRate * ExcessMort1stMoTB_Rx;
+			temp1 = Treated->ChildHIVstage[im][is] * MortRate + Treated->NewEntrants[im][is] * InitMortPropn;
+			temp2 = Treated->ChildHIVstage[im][is] * ReturnToActive * temp;
+			temp3 = Treated->ChildHIVstage[im][is] * ReturnToActive * (1.0 - temp);
+			temp3b = 0.0;
+			temp4 = Treated->ChildHIVstage[im][is] * CureRate;
+			temp4b = Treated->ChildHIVstage[im][is] * FullCure * (1.0 / 6.0) * IPTcontinuePostRx[iy];
+			temp4 = temp4 - temp4b;
+			temp5 = temp1 + temp2 + temp3 + temp3b + temp4 + temp4b;
+			if (temp5 > Treated->ChildHIVstage_E[im][is]) {
+				temp1 *= Treated->ChildHIVstage_E[im][is] / temp5;
+				temp2 *= Treated->ChildHIVstage_E[im][is] / temp5;
+				temp3 *= Treated->ChildHIVstage_E[im][is] / temp5;
+				temp3b *= Treated->ChildHIVstage_E[im][is] / temp5;
+				temp4 *= Treated->ChildHIVstage_E[im][is] / temp5;
+				temp4b *= Treated->ChildHIVstage_E[im][is] / temp5;
+			}
+			Treated->ChildHIVstage_E[im][is] = Treated->ChildHIVstage_E[im][is] - (temp1 + temp2 + temp3 + temp3b +
+				temp4 + temp4b);
+			Active1->ChildHIVstage_E[im][is] += temp2;
+			Active2->ChildHIVstage_E[im][is] += temp3;
+			PostRx->ChildHIVstage_E[im][is] += temp4;
+			IPT->ChildHIVstage_E[im][is] += temp4b;
+			if (im >= 5) {//ADJUST AGES AND AGE GROUPS HERE
+				TBadultMortOnRx[iy][ig] += temp1;
+			}
+			if ((FixedUncertainty == 1 || CalibTBdeathsA == 1) && im >= 5) {
+				TBadultMortBy5yr[iy][im / 5 - 1][ig] += temp1;
+			}
+			if (im >= 5 && is >= 5) {
+				TBdeathsAdultHIV[iy] += temp1;
+			}
+			if (FixedUncertainty == 1) { TBmortTreated[im][ig] += temp1; }
+			if (FixedUncertainty == 1) { NewIPT_TSTpos += temp4b; }
+		}
+	}
+}
+
+void UpdateChildTBrecovST(ChildTB* PostRxST, ChildTB* PostRxLT, ChildTB* Active1, ChildTB* Active2, ChildTB* IPT, ChildTB* Suscep, int IPTind)
+{
+	// IPTind = 0 for the group that's not currently on IPT, 1 for the group that is on IPT
+
+	int ia, is, ig, iy;
+	double RelapseRate, TransitionToLT, newTBactive, TBincidence, TransitionToActive;
+	double temp, temp1, temp2, temp3, temp4, temp4b, IPTswitch, CurePropn;
+	// 'Relapse' here is synonymous with reactivation in the UpdateTBrecovLT function.
+
+	iy = CurrYear - StartYear;
+	ig = PostRxST->Sex;
+	RelapseRate = RelapseST / 12.0;
+	if (IPTind == 1) { RelapseRate *= (1.0 - IPTefficacy); }
+	if (IPTind == 1) { CurePropn = TPTfraction3HP[iy] * Cure3HP * 0.333 / (0.333 + MnthlyTPTdropout); }
+	else { CurePropn = 0.0; }
+	TransitionToLT = (1.0 / DurSTpostRxRisk) / 12.0;
+	IPTswitch = 0.0;
+	if (IPTind == 1 && IPTduration[iy] > 0.0) { IPTswitch = 1.0 / CurrDurTPTprotection; }
+	if (IPTind == 0 && BaseIPTuptake[iy] > 0.0) { IPTswitch = BaseIPTuptake[iy]; }
+	for (im = 0; im < 132; im++) {
+		for (is = 0; is < 13; is++) {
+			if (is == 0) { temp = InitActiveSev[0]; } //Update HIV staging here? Made 0 for now
+			else { temp = InitActiveTBSev[1]; }
+			newTBactive = PropFastProg * HIVeffectTBinc[is] * TBincAdjByAgeSex[im][ig];
+			if (IPTind == 1) { newTBactive *= (1.0 - IPTefficacy); }
+			if (newTBactive > 1.0) { newTBactive = 1.0; }
+			// Check age groups below (the 10 won't make sense for monthly kids)
+			TBincidence = RateNewTBinfection[im + 10][ig] * PastTBfactor * (1.0 -
+				PartialImmunHIVneg * HIVeffectTBimm[is]) * newTBactive + RelapseRate;
+			if (TBincidence > 1.0) { TBincidence = 1.0; }
+			TransitionToActive = PostRxST->ChildHIVstage[im][is] * TBincidence;
+			temp1 = PostRxST->ChildHIVstage[im][is] * TransitionToLT;
+			temp2 = TransitionToActive * temp;
+			temp3 = TransitionToActive * (1.0 - temp);
+			if (IPTswitch > 0 && IPTind == 1) { temp4 = PostRxST->ChildHIVstage_E[im][is] * IPTswitch; }
+			else if (IPTswitch > 0 && IPTind == 0 && is > 15) {
+				temp4 = PostRxST->ChildHIVstage_E[im][is] * IPTswitch * HIVeffectIPTstart[is];
+				if (IPTswitch * HIVeffectIPTstart[is] > 1.0) { temp4 = PostRxST->ChildHIVstage_E[im][is]; }
+			}
+			else { temp4 = 0.0; }
+			if (IPTind == 0 && PropnHHcontactTPT[iy] > 0) {
+				temp4 += PostRxST->ChildHIVstage[im][is] * HHscreeningProbNeg * PropnHHcontactTPT[iy];
+				temp4b = PostRxST->ChildHIVstage[im][is] * HHscreeningProbNeg * PropnHHcontactTPT[iy];
+			}
+			PostRxST->ChildHIVstage_E[im][is] = PostRxST->ChildHIVstage_E[im][is] - (temp1 + temp2 + temp3 + temp4);
+			PostRxLT->ChildHIVstage_E[im][is] += temp1;
+			Active1->ChildHIVstage_E[im][is] += temp2;
+			Active2->ChildHIVstage_E[im][is] += temp3;
+			if (IPTind == 1 && CurePropn > 0) {
+				Suscep->ChildHIVstage_E[im][is] += temp4 * CurePropn;
+				IPT->ChildHIVstage_E[im][is] += temp4 * (1.0 - CurePropn);
+			}
+			else { IPT->ChildHIVstage_E[im][is] += temp4; }
+			if (FixedUncertainty == 1) {
+				NewActiveTBbyAgeSex[im][ig] += TransitionToActive;
+				NewRecurrentTBbyAgeSex[im][ig] += TransitionToActive;
+				NewRelapseTBbyAgeSex[im][ig] += TransitionToActive;
+				if (is >= 5) { NewHIVposTBbyAgeSex[im][ig] += TransitionToActive; }
+				if (is >= 20) { NewTBonARTbyAgeSex[im][ig] += TransitionToActive; }
+				if (im >= 5) {
+					NewTBreactivation += PostRxST->ChildHIVstage[im][is] * RelapseRate;
+				}
+				if (IPTind == 0) {
+					NewIPT_TSTpos += temp4;
+					NewTPT_HH += temp4b;
+				}
+			}
+		}
+	}
+}
+
+void UpdateChildTBrecovLT(ChildTB* PostRxLT, ChildTB* Active1, ChildTB* Active2, ChildTB* IPT, ChildTB* Suscep, int IPTind)
+{
+	// IPTind = 0 for the group that's not currently on IPT, 1 for the group that is on IPT
+
+	int ia, is, ig, iy;
+	double ReactivationRate, newTBactive, TBincidence, TransitionToActive;
+	double temp, temp2, temp3, temp4, temp4b, IPTswitch, CurePropn;
+
+	iy = CurrYear - StartYear;
+	ig = PostRxLT->Sex;
+	ReactivationRate = Reactivation * PastTBfactor / 12.0;
+	if (IPTind == 1) { ReactivationRate *= (1.0 - IPTefficacy); }
+	if (IPTind == 1) { CurePropn = TPTfraction3HP[iy] * Cure3HP * 0.333 / (0.333 + MnthlyTPTdropout); }
+	else { CurePropn = 0.0; }
+	IPTswitch = 0.0;
+	if (IPTind == 1 && IPTduration[iy] > 0.0) { IPTswitch = 1.0 / CurrDurTPTprotection; }
+	if (IPTind == 0 && BaseIPTuptake[iy] > 0.0) { IPTswitch = BaseIPTuptake[iy]; }
+	for (im = 0; im < 132; im++) {
+		for (is = 0; is < 13; is++) {
+			if (is == 0) { temp = InitActiveTBSev[0]; } // HIV staging (changed to 0 assuming = HIV-)
+			else { temp = InitActiveTBSev[1]; }
+			newTBactive = PropFastProg * HIVeffectTBinc[is] * TBincAdjByAgeSex[im][ig];
+			if (IPTind == 1) { newTBactive *= (1.0 - IPTefficacy); }
+			if (newTBactive > 1.0) { newTBactive = 1.0; }
+			//Careful with age grouping below
+			TBincidence = RateNewTBinfection[im + 10][ig] * PastTBfactor * (1.0 - PartialImmunHIVneg * HIVeffectTBimm[is]) *
+				newTBactive + ReactivationRate * HIVeffectTBinc[im] * TBincAdjByAgeSex[im][ig];
+			if (TBincidence > 1.0) { TBincidence = 1.0; }
+			TransitionToActive = PostRxLT->ChildHIVstage[im][is] * TBincidence;
+			temp2 = TransitionToActive * temp;
+			temp3 = TransitionToActive * (1.0 - temp);
+			if (IPTswitch > 0 && IPTind == 1) { temp4 = PostRxLT->ChildHIVstage_E[im][is] * IPTswitch; }
+			else if (IPTswitch > 0 && IPTind == 0 && is > 15) {
+				temp4 = PostRxLT->ChildHIVstage_E[im][is] * IPTswitch * HIVeffectIPTstart[is];
+				if (IPTswitch * HIVeffectIPTstart[is] > 1.0) { temp4 = PostRxLT->ChildHIVstage_E[im][is]; }
+			}
+			else { temp4 = 0.0; }
+			if (IPTind == 0 && PropnHHcontactTPT[iy] > 0) {
+				temp4 += PostRxLT->ChildHIVstage[im][is] * HHscreeningProbNeg * PropnHHcontactTPT[iy];
+				temp4b = PostRxLT->ChildHIVstage[im][is] * HHscreeningProbNeg * PropnHHcontactTPT[iy];
+			}
+			PostRxLT->ChildHIVstage_E[im][is] = PostRxLT->ChildHIVstage_E[im][is] - (temp2 + temp3 + temp4);
+			Active1->ChildHIVstage_E[im][is] += temp2;
+			Active2->ChildHIVstage_E[im][is] += temp3;
+			if (IPTind == 1 && CurePropn > 0) {
+				Suscep->ChildHIVstage_E[im][is] += temp4 * CurePropn;
+				IPT->ChildHIVstage_E[im][is] += temp4 * (1.0 - CurePropn);
+			}
+			else { IPT->ChildHIVstage_E[im][is] += temp4; }
+			if (FixedUncertainty == 1) {
+				NewActiveTBbyAgeSex[im][ig] += TransitionToActive;
+				NewRecurrentTBbyAgeSex[im][ig] += TransitionToActive;
+				if (is >= 5) { NewHIVposTBbyAgeSex[im][ig] += TransitionToActive; }
+				if (is >= 20) { NewTBonARTbyAgeSex[im][ig] += TransitionToActive; }
+				if (im >= 5) {
+					NewTBreactivation += PostRxLT->ChildHIVstage[im][is] * ReactivationRate * HIVeffectTBinc[is] * TBincAdjByAgeSex[im][ig];
+				}
+				if (IPTind == 0) {
+					NewIPT_TSTpos += temp4;
+					NewTPT_HH += temp4b;
+				}
+			}
+		}
+	}
+}
+
 void CalcTBtransitions()
 {
 	int ia, is;
@@ -17437,7 +17907,10 @@ void TBresultsAtEndOfYr()
 		DurTBadultHIVpos.out[CurrSim - 1][iy] = TotTBadultHIVpos.out[CurrSim - 1][iy] / temp2;
 		DurTBadultHIVneg.out[CurrSim - 1][iy] = TotTBadultHIVneg.out[CurrSim - 1][iy] / (temp1 - temp2);
 	}
-	if (FixedUncertainty == 1) { AnnMTBriskPaed.out[CurrSim - 1][iy] = AnnualRiskMTBpaed[iy]; }
+	// Paediatric TB results
+	if (FixedUncertainty == 1) { 
+		AnnMTBriskPaed.out[CurrSim - 1][iy] = AnnualRiskMTBpaed[iy]; 
+	}
 
 	// Diagnosis and treatment outputs
 	SmPosRxDelay[iy] = TotSmPosTB[iy] / (TBadultRxSmDiag[iy] + SmPosRxScreen[iy]);

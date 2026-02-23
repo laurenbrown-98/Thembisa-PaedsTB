@@ -4,7 +4,7 @@
 #include <fstream>
 #include <cmath>
 #include <string>
-#using <mscorlib.dll>
+//#using <mscorlib.dll>
 
 using namespace std;
 
@@ -1651,6 +1651,32 @@ public:
 	double NewEntrants[81][44]; ///< Only necessary for the treatment states
 
 	AdultTB(int Gender, int Rif, int Rx2);
+	void SetStartProfile();
+	void UpdateStartProfile();
+	void UpdateEndProfile();
+	void AdjustPopTotals();
+	void UpdateStartTotal();
+	void UpdateDemog(); ///< Changes in age, ART duration
+};
+
+class ChildTB
+{
+public:
+
+	int Sex; ///< 0 = male, 1 = female
+
+	///< Arrays to represent population profile at START of month
+	double ChildHIVstage[133][13];
+	double Total[133];
+
+	///< Arrays to represent population profile at END of month
+	double ChildHIVstage_E[133][13];
+	double Total_E[133];
+
+	///< Other variables
+	double NewEntrants[133][13]; ///< Only necessary for the treatment states
+
+	ChildTB(int Gender);
 	void SetStartProfile();
 	void UpdateStartProfile();
 	void UpdateEndProfile();
