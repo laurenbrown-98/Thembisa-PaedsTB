@@ -567,7 +567,7 @@ double PropnD2DdCXR[86]; ///< % of door-to-door screening that includes digital 
 double NutritionSupportHHcontacts[86]; ///< % of HH contacts getting nutrition support
 
 //==================================================================================
-///< Parameters and arrays in intermediate output calculations (formlery 'Results')
+///< Parameters and arrays in intermediate output calculations (formerly 'Results')
 //==================================================================================
 
 double AdultMortBy5yr[86][16][2]; ///< Starting from age 15-19, up to 90+
@@ -1049,6 +1049,54 @@ double NewTPT_HH; ///< Adults starting TPT, latently infected, as a result of HH
 double TBincRednNutrition; ///< Reduction in TB incidence due to nutrition
 
 //============================================================================
+///< Paediatric Tuberculosis parameters
+//============================================================================
+
+///< Transmission and natural history parameters
+double PropFastProgChild; ///< Proportion of children progressing to active TB soon after infection 
+double RR_ChildTBinc_base; ///< RR TB incidence in children in early-stage disease and not on ART vs HIV-
+double late_early_ChildTBinc; ///< Multiplier for RR TB incidence: late-stage vs early-stage HIV disease
+double ARTvNone_ChildTBinc; ///< Multiplier for RR TB incidence: on ART vs not on ART
+double RR_ChildTBmort_base; ///< RR TB mortality in children in early-stage disease and not on ART vs HIV-
+double late_early_ChildTBmort; ///< Multiplier for RR TB mortality: late-stage vs early-stage HIV disease
+double ARTvNone_ChildTBmort; ///< Multiplier for RR TB mortality: on ART vs not on ART
+double RR_ChildTPTuptake; ///< RR of TPT uptake in children, relative to adults
+double RR_postRxUptakeChild; ///< RR of TPT uptake post-Rx in children, relative to adults
+double ChildTBreactivation; ///< Annual reactivation rate in HIV-negative children
+double HealthSeekChildTBSev; ///< Annual rate of health seeking due to active TB symptoms in children with severe TB
+double HealthSeekChildTBNonSev; ///< Annual rate of health seeking due to active TB
+double DiagChildSev; ///< Proportion of children with severe active TB who are diagnosed
+double DiagChildNonSev; ///< Proportion of children with non-severe active TB who are diagnosed
+double ChildILTFU; ///< Initial loss to follow-up in children diagnosed with active TB
+double ChildTBmortSev; ///< Annual mortality rate in children with untreated severe active TB
+double ChildTBmortNonSev; ///< Annual mortality rate in children with untreated non-severe active TB
+double ChildTBrecovSev; ///< Annual recovery rate in children with untreated severe active TB
+double ChildTBrecovNonSev; ///< Annual recovery rate in children with untreated non-severe active TB
+double ChildRxMort; ///< Annual mortality rate in HIV-, children on Rx for TB
+double ChildRxDur; ///< Average duration of treatment in children
+double ChildRxDiscont; ///< Annual treatment discontinuation in children
+double PastChildTBfactor; ///< Increased risk of TB in children if had TB previously
+double ChildRelapseST; ///< Annual relapse rate in children recently cured from TB
+
+///< Initalization parameters
+
+double InitialPaedActiveTB[3][2]; ///< Propn with initial active TB in children aged 0-14, by age and sex
+double InitPaedTBSev[3][2]; ///< Propn of active TB that is initially severe in children aged 0-14
+double InitPreviousPaedTB[3][2]; ///< History of previously treated TB in children aged 0-14 (currently set to zero)
+double InitPaedLTBI[2]; ///< Parameters for catalytic model for initial prevalence of LTBI in children (phi set to 1)
+
+///< Variables/intermediate outputs that are calculated
+
+double InitPropnSev[15][2];
+double InitPropnNonSev[15][2];
+double InitChildLTBIprev[15]; ///< Initial prevalence of latent TB in children, by age
+double InitChildTBhistory[15][2];
+double HIVeffectChildTBinc[13]; ///< RR of TB incidence in children
+double HIVeffectChildTBmort[13]; ///< RR of TB mortality in children
+double NewChildTBreactivation; ///< # new paediatric TB cases due to reactivation
+double NewChildTPT; ///< Children starting TPT, latently infected
+
+//============================================================================
 ///< Parameters and arrays for non-HIV mortality
 //============================================================================
 
@@ -1231,6 +1279,12 @@ double NewHIVposTBbyAgeSex[81][2];
 double NewTBonARTbyAgeSex[81][2];
 double NewRecurrentTBbyAgeSex[81][2];
 double NewRelapseTBbyAgeSex[81][2];
+
+double NewActiveChildTBbyAgeSex[10][2];
+double NewHIVposChildTBbyAgeSex[10][2];
+double NewChildTBonARTbyAgeSex[10][2];
+double NewChildTBdeathsbyAgeSex[10][2];
+double NewChildTBTreatedByAgeSex[10][2];
 
 ///< Age-specific flow variables that are calculated from monthly outputs
 
@@ -1680,9 +1734,9 @@ public:
 	void SetStartProfile();
 	void UpdateStartProfile();
 	void UpdateEndProfile();
-	void AdjustPopTotals();
+	void AdjustPopTotals(); //< Needs to be updated after GetHIVtoTBPopRatios is finalized
 	void UpdateStartTotal();
-	void UpdateDemog(); ///< Changes in age, ART duration
+	void UpdateDemog(); ///< Do we need this here? TBC in .cpp file
 };
 
 class OutputArray
@@ -1773,6 +1827,8 @@ void ReadTBlabDiag();
 void ReadTBprevData();
 void ReadTB_HIV_ORs();
 void ReadTBscreening();
+void ReadInitChildTB();
+void ReadChildTBAssumps();
 
 ///< Initialization functions
 void SetInitialParameters();
@@ -1788,6 +1844,8 @@ void SetFertByStage(); ///< Calculations in col AK of "Fertility" sheet
 void SetProgression(int setting); ///< setting = 0 implies start year, 1 otherwise
 void SetFutureRollout(); ///< Only gets called if VaryFutureInterventions = 1
 void SetFutureRolloutTB(); ///< Only gets called if VaryFutureInterventionsTB = 1
+void InitializeChildTBprofiles();
+void CalcHIVeffectChildTB();
 
 ///< Functions called on a monthly basis: HIV
 void GetCurrBehavDbnM(); ///< Calculations in cols N-Q of 'Sex activity' sheet
@@ -2044,6 +2102,27 @@ AdultTB TBrecoveredLT_F(1, 0, 0);
 AdultTB TBlatentIPT_F(1, 0, 0);
 AdultTB TBrecST_IPT_F(1, 0, 0);
 AdultTB TBrecLT_IPT_F(1, 0, 0);
+
+ChildTB ChildTBsuscepM(0);
+ChildTB ChildTBlatentM(0);
+ChildTB ChildTBactiveSevM(0);
+ChildTB ChildTBactiveNonSevM(0);
+ChildTB ChildTBtreatedM(0);
+ChildTB ChildTBrecoveredST_M(0);
+ChildTB ChildTBrecoveredLT_M(0);
+ChildTB ChildTBlatentIPT_M(0);
+ChildTB ChildTBrecST_IPT_M(0);
+ChildTB ChildTBrecLT_IPT_M(0);
+ChildTB ChildTBsuscepF(1);
+ChildTB ChildTBlatentF(1);
+ChildTB ChildTBactiveSevF(1);
+ChildTB ChildTBactiveNonSevF(1);
+ChildTB ChildTBtreatedF(1);
+ChildTB ChildTBrecoveredST_F(1);
+ChildTB ChildTBrecoveredLT_F(1);
+ChildTB ChildTBlatentIPT_F(1);
+ChildTB ChildTBrecST_IPT_F(1);
+ChildTB ChildTBrecLT_IPT_F(1);
 
 OutputArray RandomUniform(MCMCdim);
 OutputArray ModelParameters(MCMCdim);

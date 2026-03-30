@@ -1,0 +1,5 @@
+1st item is inclusion indicator, 2nd item is prior type (0 = beta, 1 = gamma, 2 = normal), 3rd and 4th items are prior parameters
+1. TB transmission probability per contact per day (if infectious individual is smear-positive)
+1	0	3.97	657.7
+2. Proportion experiencing fast progression
+1	0	20.18	268.15
