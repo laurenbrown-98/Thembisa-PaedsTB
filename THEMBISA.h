@@ -671,6 +671,8 @@ double SumGroupsF[81][44]; ///< Sum of adult female risk groups (cols R-BI)
 double SumGroupsVM[20][44]; ///< Sum of virgin male risk groups (cols BK-DB)
 double SumGroupsVF[20][44]; ///< Sum of virgin female risk groups (cols BK-DB)
 double InitPrevAdj[35][2]; ///< Adjustments to initial prevalence in women aged 15-49
+double SumGroupsChildM[133][13]; ///< Sum of child male population by HIV stage
+double SumGroupsChildF[133][13]; ///< Sum of child female population by HIV stage
 
 //=================================================================================
 ///< Parameters and arrays for sexual activity calcs (formerly 'Sex activity' sheet)
@@ -1080,21 +1082,24 @@ double ChildRelapseST; ///< Annual relapse rate in children recently cured from 
 
 ///< Initalization parameters
 
-double InitialPaedActiveTB[3][2]; ///< Propn with initial active TB in children aged 0-14, by age and sex
-double InitPaedTBSev[3][2]; ///< Propn of active TB that is initially severe in children aged 0-14
-double InitPreviousPaedTB[3][2]; ///< History of previously treated TB in children aged 0-14 (currently set to zero)
-double InitPaedLTBI[2]; ///< Parameters for catalytic model for initial prevalence of LTBI in children (phi set to 1)
+double InitPaedTBSev[3][2]; ///< Propn of active TB that is initially severe in children by age and HIV status
 
 ///< Variables/intermediate outputs that are calculated
 
-double InitPropnSev[15][2];
-double InitPropnNonSev[15][2];
-double InitChildLTBIprev[15]; ///< Initial prevalence of latent TB in children, by age
-double InitChildTBhistory[15][2];
+double RateNewTBinfectionChild[133][2]; ///< Monthly rate of new infection in children, by age and sex
+double InitPropnSev[132][2]; // Initial proportion of active TB that is severe in children, by age and sex
+double InitPropnNonSev[132][2]; // Initial proportion of active TB that is severe in children, by age and sex
+double InitChildLTBIprev[132]; ///< Initial prevalence of latent TB in children, by age
+double InitChildTBhistory[132][2]; ///< Initial history of TB in children, by age and sex
 double HIVeffectChildTBinc[13]; ///< RR of TB incidence in children
 double HIVeffectChildTBmort[13]; ///< RR of TB mortality in children
 double NewChildTBreactivation; ///< # new paediatric TB cases due to reactivation
 double NewChildTPT; ///< Children starting TPT, latently infected
+double SumChildTBgroupsM[133][13]; 
+double SumChildTBgroupsF[133][13];
+double SumChildTB[133][2];
+double RatioHIVtoChildTBpopM[133][13]; ///< Adjustment to bring TB total in line with HIV model
+double RatioHIVtoChildTBpopF[133][13]; ///< Adjustment to bring TB
 
 //============================================================================
 ///< Parameters and arrays for non-HIV mortality
@@ -1538,33 +1543,33 @@ class Child
 	double NewNonVertCurrY;
 
 	///< Arrays to represent population profile at START of month
-	double NegMatMF[133];
-	double NegMatEBF[133];
-	double AcuteMatMF[133];
-	double AcuteMatEBF[133];
-	double UnawareMatMF[133];
-	double UnawareMatEBF[133];
-	double AwareMatMF[133];
-	double AwareMatEBF[133];
-	double ARTmatMF[133];
-	double ARTmatEBF[133];
-	double NegChildFF[133];
-	double PosChildAtBirthNoPMTCT[133];
-	double PosChildAtBirthPMTCT[133];
-	double PosChildAfterBirth[133];
-	double ARTeligible[133];
-	double DiagChildAtBirthNoPMTCT[133];
-	double DiagChildAtBirthPMTCT[133];
-	double DiagChildAfterBirth[133];
-	double DiagARTeligible[133];
-	double OnARTearly[133];
-	double OnARTlate1st3m[133];
-	double OnARTlateAfter3m[133];
-	double StoppedART[133];
-	double Total[133];
+	double NegMatMF[133];                        ///< HIV-negative child, mixed feeding, mother HIV-negative
+	double NegMatEBF[133];                       ///< HIV-negative child, exclusive breastfeeding, mother HIV-negative
+	double AcuteMatMF[133];                      ///< HIV-negative child, mixed feeding, mother acutely infected
+	double AcuteMatEBF[133];                     ///< HIV-negative child, exclusive breastfeeding, mother acutely infected
+	double UnawareMatMF[133];                    ///< HIV-negative child, mixed feeding, mother HIV+ unaware
+	double UnawareMatEBF[133];                   ///< HIV-negative child, exclusive breastfeeding, mother HIV+ unaware
+	double AwareMatMF[133];                      ///< HIV-negative child, mixed feeding, mother HIV+ aware
+	double AwareMatEBF[133];                     ///< HIV-negative child, exclusive breastfeeding, mother HIV+ aware
+	double ARTmatMF[133];                        ///< HIV-negative child, mixed feeding, mother on ART
+	double ARTmatEBF[133];                       ///< HIV-negative child, exclusive breastfeeding, mother on ART
+	double NegChildFF[133];                      ///< HIV-negative child, formula fed
+	double PosChildAtBirthNoPMTCT[133];          ///< Perinatally HIV-infected child, no PMTCT
+	double PosChildAtBirthPMTCT[133];            ///< Perinatally HIV-infected child, with PMTCT
+	double PosChildAfterBirth[133];              ///< HIV-infected child, acquired postnatally
+	double ARTeligible[133];                     ///< HIV-infected child, late-stage disease
+	double DiagChildAtBirthNoPMTCT[133];         ///< Perinatally HIV-infected child, no PMTCT, diagnosed
+	double DiagChildAtBirthPMTCT[133];           ///< Perinatally HIV-infected child, with PMTCT, diagnosed
+	double DiagChildAfterBirth[133];             ///< HIV-infected child, acquired postnatally, diagnosed
+	double DiagARTeligible[133];                 ///< HIV-infected child, late-stage disease, diagnosed
+	double OnARTearly[133];                      ///< HIV-infected child, on ART early
+	double OnARTlate1st3m[133];                  ///< HIV-infected child, on ART late, first 3 months
+	double OnARTlateAfter3m[133];                ///< HIV-infected child, on ART late, after 3 months
+	double StoppedART[133];                      ///< HIV-infected child, interrupted ART
+	double Total[133];                           ///< Total number of children
 
 	///< Arrays to represent population profile at END of month
-	double NegMatMF_E[133];
+	double NegMatMF_E[133]; 
 	double NegMatEBF_E[133];
 	double AcuteMatMF_E[133];
 	double AcuteMatEBF_E[133];

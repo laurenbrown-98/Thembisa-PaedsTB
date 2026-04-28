@@ -2414,7 +2414,7 @@ void ChildTB::SetStartProfile()
 {
 	int im, is;
 
-	for (im = 0; im < 132; im++) {
+	for (im = 0; im < 133; im++) {
 		ChildHIVstage[im][0] = Total[im];
 		for (is = 1; is < 13; is++) { ChildHIVstage[im][is] = 0.0; }
 		}
@@ -2424,7 +2424,7 @@ void ChildTB::UpdateStartProfile()
 {
 	int im, is;
 
-	for (im = 0; im < 132; im++) {
+	for (im = 0; im < 133; im++) {
 		for (is = 0; is < 13; is++) {
 			ChildHIVstage[im][is] = ChildHIVstage_E[im][is];
 		}
@@ -2434,12 +2434,9 @@ void ChildTB::UpdateStartProfile()
 
 void ChildTB::UpdateEndProfile()
 {
-	// This function should only be called as a first step prior to calculating the transitions
-	// between the TB states.
-
 	int im, is;
 
-	for (im = 0; im < 132; im++) {
+	for (im = 0; im < 133; im++) {
 		for (is = 0; is < 13; is++) {
 			ChildHIVstage_E[im][is] = ChildHIVstage[im][is];
 		}
@@ -2447,19 +2444,41 @@ void ChildTB::UpdateEndProfile()
 	}
 }
 
-/*
+
 void ChildTB::AdjustPopTotals()
 {
-	// NOT DONE FOR CHILD TB - NEED TO GET RatioHIVtoTBpop FIRST!
+	int im, is;
+
+	for (im = 0; im < 133; im++) {
+		for (is = 0; is < 13; is++) {
+			if (Sex == 0) {
+				if (RatioHIVtoChildTBpopM[im][is] >= 0.0) {
+					ChildHIVstage[im][is] *= RatioHIVtoChildTBpopM[im][is];
+				}
+				else {
+					ChildHIVstage[im][is] = SumGroupsChildM[im][is] * Total[im] /
+						SumChildTB[im][0];
+				}
+			}
+			else {
+				if (RatioHIVtoChildTBpopF[im][is] >= 0.0) {
+					ChildHIVstage[im][is] *= RatioHIVtoChildTBpopF[im][is];
+				}
+				else {
+					ChildHIVstage[im][is] = SumGroupsChildF[im][is] * Total[im] /
+						SumChildTB[im][1];
+				}
+			}
+		}
+	}
 }
-*/
 
 void ChildTB::UpdateStartTotal()
 {
 	int im, is;
 	double temp;
 
-	for (im = 0; im < 132; im++) {
+	for (im = 0; im < 133; im++) {
 		temp = 0.0;
 		for (is = 0; is < 13; is++) {
 			temp += ChildHIVstage[im][is];
@@ -2470,19 +2489,19 @@ void ChildTB::UpdateStartTotal()
 
 void ChildTB::UpdateDemog()
 {
-	// Currently under 10s are handled into the MoveInto AdultTBfunction, so we need to figure 
-	// out what needs to happen here - only consider the 10-14s?
-
 	int im, ib, is;
 
-	for (im = 0; im < 132; im++) {
-		ib = 132 - im;
+	for (im = 0; im < 133; im++) {
+		ib = 133 - im;
 		for (is = 0; is < 13; is++) {
 			ChildHIVstage[ib][is] = ChildHIVstage[ib - 1][is];
 		}
 	}
 	
-	// NB: linked to above - what about ChildHIVstage[0][is]?
+	// NB: linked to above - what about ChildHIVstage[0][is]? Setting to zero for now.
+	for (is = 0; is < 13; is++) {
+		ChildHIVstage[0][is] = 0.0;
+	}
 }
 
 OutputArray::OutputArray(int n)
@@ -5574,24 +5593,10 @@ void ReadInitChildTB()
 		cerr << "Could not open InitPaedTBprev.txt\n";
 		exit(1);
 	}
-
 	file.ignore(255, '\n');
 	for (ia= 0; ia < 4; ia++) {
-		file >> InitialPaedActiveTB[ia][0] >> InitialPaedActiveTB[ia][1];
+		file >> InitPaedTBSev[ia][0] >> InitPaedTBSev[ia][1]; // 0 = HIV-, 1 = HIV+
 	}
-	file.ignore(255, '\n');
-	file.ignore(255, '\n');
-	for (ia= 0; ia < 4; ia++) {
-		file >> InitPaedTBSev[ia][0] >> InitPaedTBSev[ia][1];
-	}
-	file.ignore(255, '\n');
-	file.ignore(255, '\n');
-	for (ia = 0; ia < 4; ia++) {
-		file >> InitPreviousPaedTB[ia][0] >> InitPreviousPaedTB[ia][1];
-	}
-	file.ignore(255, '\n');
-	file.ignore(255, '\n');
-	file >> InitPaedLTBI[0] >> InitPaedLTBI[1];
 	file.close();
 }
 
@@ -6398,54 +6403,83 @@ void CalcTBincAdjByAgeSex()
 
 void InitializeChildTBprofiles()
 {
-	int ia, ig, ii, c, d;
+	int im, ig, x2, iag;
+	double x1, intpart1, DoubleIntDif1;
+	double StartPopByMonth[133][2];
 
-	// Set InitPaedsLTBIprev
-	for (ia = 0; ia < 10; ia++) {
-		InitChildLTBIprev[ia] = InitPaedLTBI[0] * (1.0 - exp(-InitPaedLTBI[1] * ia));
-	}
-
-	// Set InitPaedTBSev and InitPaedTBNonSev (active TB)
+	// Set monthly starting population from annual StartingPop
 	for (ig = 0; ig < 2; ig++) {
-		for (ia = 0; ia < 3; ia++) {
-			c = ia * 5;
-			d = (ia + 1) * 5;
-			for (ii = c; ii < d; ii++) {
-				InitPropnSev[ii][ig] = InitialPaedActiveTB[ia][ig] * InitPaedTBSev[0];
-				InitPropnNonSev[ii][ig] = InitialPaedActiveTB[ia][ig] * (1.0 - InitPaedTBSev[0]);
+		for (im = 0; im < 133; im++) {
+			x1 = im / 12.0;
+			DoubleIntDif1 = modf(x1, &intpart1); // split x1 into integer and fractional parts
+
+			if (DoubleIntDif1 == 0.0 || im == 0) {
+				x2 = x1;
+				StartPopByMonth[im][ig] = StartingPop[x2][ig] / 12.0;
+			}
+			else {
+				StartPopByMonth[im][ig] = StartPopByMonth[im - 1][ig];
 			}
 		}
 	}
 
-	// Set InitChildTBhistory
+	// Set InitChildLTBIprev by month
+	for (im = 0; im < 133; im++) {
+		x1 = im / 12.0;
+		x2 = (int)x1;
+		if (x2 > 10) { x2 = 10; }  // safeguard for top index if needed
+
+		InitChildLTBIprev[im] = InitLTBIscaling * InitLTBI[0] * (1.0 - exp(-InitLTBI[1] * x2));
+	}
+
+	// Set InitPropnSev and InitPropnNonSev by month
 	for (ig = 0; ig < 2; ig++) {
-		for (ii = 0; ii < 10; ii++) { InitChildTBhistory[ii][ig] = 0.0; }
+		for (im = 0; im < 133; im++) {
+			x1 = im / 12.0;
+			x2 = (int)x1;
+			if (x2 > 10) { x2 = 10; }
+
+			// Map annual age to child active TB age groups
+			if (x2 < 5) { iag = 0; }          // ages 0-4
+			else if (x2 < 10) { iag = 1; }    // ages 5-9
+			else { iag = 2; }                 // age 10 / transition band
+
+			InitPropnSev[im][ig] = InitialActiveTB[iag][ig] * InitPaedTBSev[iag][0];
+			InitPropnNonSev[im][ig] = InitialActiveTB[iag][ig] * (1.0 - InitPaedTBSev[iag][0]);
+		}
+	}
+
+	// Set InitChildTBhistory by month
+	for (ig = 0; ig < 2; ig++) {
+		for (im = 0; im < 133; im++) {
+			InitChildTBhistory[im][ig] = 0.0; // currently set to zero
+		}
 	}
 
 	// Set initial totals in each TB state
-	for (ia = 0; ia < 10; ia++) {
-		ChildTBsuscepM.Total[ia] = StartingPop[ia][0] * (1.0 - InitChildLTBIprev[ia]);
-		ChildTBsuscepF.Total[ia] = StartingPop[ia][1] * (1.0 - InitChildLTBIprev[ia]);
-		ChildTBactiveSevM.Total[ia] = StartingPop[ia][0] * InitPropnSev[ia][0];
-		ChildTBactiveSevF.Total[ia] = StartingPop[ia][1] * InitPropnSev[ia][1];
-		ChildTBactiveNonSevM.Total[ia] = StartingPop[ia][0] * InitPropnNonSev[ia][0];
-		ChildTBactiveNonSevF.Total[ia] = StartingPop[ia][1] * InitPropnNonSev[ia][1];
-		ChildTBrecoveredLT_M.Total[ia] = StartingPop[ia][0] * InitChildTBhistory[ia][0]; // Zero for now TBD
-		ChildTBrecoveredLT_F.Total[ia] = StartingPop[ia][1] * InitChildTBhistory[ia][1]; // Zero for now TBD
-		ChildTBlatentM.Total[ia] = StartingPop[ia][0] * (InitChildLTBIprev[ia] -
-			InitPropnSev[ia][0] - InitPropnNonSev[ia][0] - InitChildTBhistory[ia][0]);
-		ChildTBlatentF.Total[ia] = StartingPop[ia][1] * (InitChildLTBIprev[ia] -
-			InitPropnSev[ia][1] - InitPropnNonSev[ia][1] - InitChildTBhistory[ia][1]);
-		ChildTBtreatedM.Total[ia] = 0.0;
-		ChildTBtreatedF.Total[ia] = 0.0;
-		ChildTBrecoveredST_M.Total[ia] = 0.0;
-		ChildTBrecoveredST_F.Total[ia] = 0.0;
-		ChildTBlatentIPT_M.Total[ia] = 0.0;
-		ChildTBlatentIPT_F.Total[ia] = 0.0;
-		ChildTBrecST_IPT_M.Total[ia] = 0.0;
-		ChildTBrecST_IPT_F.Total[ia] = 0.0;
-		ChildTBrecLT_IPT_M.Total[ia] = 0.0;
-		ChildTBrecLT_IPT_F.Total[ia] = 0.0;
+	for (im = 0; im < 133; im++) {
+		ChildTBsuscepM.Total[im] = StartPopByMonth[im][0] * (1.0 - InitChildLTBIprev[im]);
+		ChildTBsuscepF.Total[im] = StartPopByMonth[im][1] * (1.0 - InitChildLTBIprev[im]);
+		ChildTBactiveSevM.Total[im] = StartPopByMonth[im][0] * InitPropnSev[im][0];
+		ChildTBactiveSevF.Total[im] = StartPopByMonth[im][1] * InitPropnSev[im][1];
+		ChildTBactiveNonSevM.Total[im] = StartPopByMonth[im][0] * InitPropnNonSev[im][0];
+		ChildTBactiveNonSevF.Total[im] = StartPopByMonth[im][1] * InitPropnNonSev[im][1];
+		ChildTBrecoveredLT_M.Total[im] = StartPopByMonth[im][0] * InitChildTBhistory[im][0];
+		ChildTBrecoveredLT_F.Total[im] = StartPopByMonth[im][1] * InitChildTBhistory[im][1];
+		ChildTBlatentM.Total[im] = StartPopByMonth[im][0] *
+			(InitChildLTBIprev[im] - InitPropnSev[im][0] - InitPropnNonSev[im][0] - InitChildTBhistory[im][0]);
+		ChildTBlatentF.Total[im] = StartPopByMonth[im][1] *
+			(InitChildLTBIprev[im] - InitPropnSev[im][1] - InitPropnNonSev[im][1] - InitChildTBhistory[im][1]);
+		ChildTBtreatedM.Total[im] = 0.0;
+		ChildTBtreatedF.Total[im] = 0.0;
+		ChildTBrecoveredST_M.Total[im] = 0.0;
+		ChildTBrecoveredST_F.Total[im] = 0.0;
+		ChildTBlatentIPT_M.Total[im] = 0.0;
+		ChildTBlatentIPT_F.Total[im] = 0.0;
+		ChildTBrecST_IPT_M.Total[im] = 0.0;
+		ChildTBrecST_IPT_F.Total[im] = 0.0;
+		ChildTBrecLT_IPT_M.Total[im] = 0.0;
+		ChildTBrecLT_IPT_F.Total[im] = 0.0;
 	}
 
 	// Split totals across initial HIV states
@@ -6469,7 +6503,6 @@ void InitializeChildTBprofiles()
 	ChildTBrecST_IPT_F.SetStartProfile();
 	ChildTBrecLT_IPT_M.SetStartProfile();
 	ChildTBrecLT_IPT_F.SetStartProfile();
-
 }
 
 void CalcHIVeffectChildTB()
@@ -6477,7 +6510,7 @@ void CalcHIVeffectChildTB()
 	int is;
 
 	// Only considering incidence and mortality for now (HIVeffectChildTBimm[is], HIVeffectChildTBrecov[is], 
-	// and HIVeffectChildTPTstart[is] to still potentially be considered)
+	// and HIVeffectChildTPTstart[is] to still be considered)
 
     // HIV-negative
     HIVeffectChildTBinc[0] = 1.0;
@@ -7215,6 +7248,7 @@ void UpdatePop()
 {
 	int ia, im, is, id, iy;
 	double Temp1, Temp2;
+	double checkM, checkF; // REMOVE THIS AND CODE BELOW TO CHECK IF SUMGROUPSCHILDM/F MATCH THOSE FOR TOTAL
 
 	iy = CurrYear - StartYear;
 
@@ -7290,6 +7324,57 @@ void UpdatePop()
 		TotalInterrupt[ia][0] += Temp1;
 		TotalInterrupt[ia][1] += Temp2;
 	}
+
+	for(im = 0; im < 133; im++){
+		SumGroupsChildM[im][0] = MaleChild.NegMatMF[im] + MaleChild.NegMatEBF[im] + MaleChild.AcuteMatMF[im] +
+			MaleChild.AcuteMatEBF[im] + MaleChild.UnawareMatMF[im] + MaleChild.UnawareMatEBF[im] + MaleChild.AwareMatMF[im] +
+			MaleChild.AwareMatEBF[im] + MaleChild.ARTmatMF[im] + MaleChild.ARTmatEBF[im] + MaleChild.NegChildFF[im];
+		SumGroupsChildM[im][1] = MaleChild.PosChildAtBirthNoPMTCT[im];
+		SumGroupsChildM[im][2] = MaleChild.PosChildAtBirthPMTCT[im];
+		SumGroupsChildM[im][3] = MaleChild.PosChildAfterBirth[im];
+		SumGroupsChildM[im][4] = MaleChild.ARTeligible[im];
+		SumGroupsChildM[im][5] = MaleChild.DiagChildAtBirthNoPMTCT[im];
+		SumGroupsChildM[im][6] = MaleChild.DiagChildAtBirthPMTCT[im];
+		SumGroupsChildM[im][7] = MaleChild.DiagChildAfterBirth[im];
+		SumGroupsChildM[im][8] = MaleChild.DiagARTeligible[im];
+		SumGroupsChildM[im][9] = MaleChild.OnARTearly[im];
+		SumGroupsChildM[im][10] = MaleChild.OnARTlate1st3m[im];
+		SumGroupsChildM[im][11] = MaleChild.OnARTlateAfter3m[im];
+		SumGroupsChildM[im][12] = MaleChild.StoppedART[im];
+
+		SumGroupsChildF[im][0] = FemChild.NegMatMF[im] + FemChild.NegMatEBF[im] + FemChild.AcuteMatMF[im] +
+			FemChild.AcuteMatEBF[im] + FemChild.UnawareMatMF[im] + FemChild.UnawareMatEBF[im] + FemChild.AwareMatMF[im] +
+			FemChild.AwareMatEBF[im] + FemChild.ARTmatMF[im] + FemChild.ARTmatEBF[im] + FemChild.NegChildFF[im];
+		SumGroupsChildF[im][1] = FemChild.PosChildAtBirthNoPMTCT[im];
+		SumGroupsChildF[im][2] = FemChild.PosChildAtBirthPMTCT[im];
+		SumGroupsChildF[im][3] = FemChild.PosChildAfterBirth[im];
+		SumGroupsChildF[im][4] = FemChild.ARTeligible[im];
+		SumGroupsChildF[im][5] = FemChild.DiagChildAtBirthNoPMTCT[im];
+		SumGroupsChildF[im][6] = FemChild.DiagChildAtBirthPMTCT[im];
+		SumGroupsChildF[im][7] = FemChild.DiagChildAfterBirth[im];
+		SumGroupsChildF[im][8] = FemChild.DiagARTeligible[im];
+		SumGroupsChildF[im][9] = FemChild.OnARTearly[im];
+		SumGroupsChildF[im][10] = FemChild.OnARTlate1st3m[im];
+		SumGroupsChildF[im][11] = FemChild.OnARTlateAfter3m[im];
+		SumGroupsChildF[im][12] = FemChild.StoppedART[im];
+
+		// REMOVE BELOW IF HAPPY WITH IMPLEMENTATION
+		checkM = 0.0;
+		checkF = 0.0;
+		for (int is = 0; is < 13; is++) {
+			checkM += SumGroupsChildM[im][is];
+			checkF += SumGroupsChildF[im][is];
+		}
+		if (fabs(checkM - MaleChild.Total[im]) > 1e-6) {
+			printf("WARNING (Male): im=%d, SumChild=%.6f, Total=%.6f, Diff=%.6f\n",
+			im, checkM, MaleChild.Total[im], checkM - MaleChild.Total[im]);
+		}
+		if (fabs(checkF - FemChild.Total[im]) > 1e-6) {
+			printf("WARNING (Female): im=%d, SumChild=%.6f, Total=%.6f, Diff=%.6f\n",
+			im, checkF, FemChild.Total[im], checkF - FemChild.Total[im]);
+		}
+	}
+
 	for(ia=0; ia<81; ia++){
 		TotalPop[ia+10][0] = MHU_virgin.Total[ia] + MHC_virgin.Total[ia] + 
 			MHU_ST.Total[ia] + MHC_ST.Total[ia] + MHU_STM.Total[ia] + 
@@ -9297,6 +9382,26 @@ void CopyEndToStart()
 			RR_TBtreated2ndM.UpdateStartProfile();
 			RR_TBtreated2ndF.UpdateStartProfile();
 		}
+		ChildTBsuscepM.UpdateStartProfile();
+		ChildTBlatentM.UpdateStartProfile();
+		ChildTBactiveSevM.UpdateStartProfile();
+		ChildTBactiveNonSevM.UpdateStartProfile();
+		ChildTBtreatedM.UpdateStartProfile();
+		ChildTBrecoveredST_M.UpdateStartProfile();
+		ChildTBrecoveredLT_M.UpdateStartProfile();
+		ChildTBlatentIPT_M.UpdateStartProfile();
+		ChildTBrecST_IPT_M.UpdateStartProfile();
+		ChildTBrecLT_IPT_M.UpdateStartProfile();
+		ChildTBsuscepF.UpdateStartProfile();
+		ChildTBlatentF.UpdateStartProfile();
+		ChildTBactiveSevF.UpdateStartProfile();
+		ChildTBactiveNonSevF.UpdateStartProfile();
+		ChildTBtreatedF.UpdateStartProfile();
+		ChildTBrecoveredST_F.UpdateStartProfile();
+		ChildTBrecoveredLT_F.UpdateStartProfile();
+		ChildTBlatentIPT_F.UpdateStartProfile();
+		ChildTBrecST_IPT_F.UpdateStartProfile();
+		ChildTBrecLT_IPT_F.UpdateStartProfile();
 	}
 }
 
@@ -10688,6 +10793,7 @@ void CalcTBforceOfInf()
 	int ia2; // age group of susceptible individual (0-4, 5-12, 13-25, 26-45, 46+)
 	int ig1; // sex of the infectious individual
 	int ig2; // sex of the susceptible individual
+	int im; // splitting FOI into monthly ages for children
 	double TotPop2[5][2]; // Total population by susceptible age group
 	// Equivalent to N in Mmamapudi's equation
 	double InfectiousSmPos[4][2]; // Smear-positive
@@ -10804,6 +10910,17 @@ void CalcTBforceOfInf()
 	AnnualRiskMTBpaed[CurrYear - StartYear] += 0.25 * (ForceOfInf[0][0] + ForceOfInf[0][1] 
 		+ ForceOfInf[1][0] + ForceOfInf[1][1]);
 
+	for (ig2 = 0; ig2 < 2; ig2++) {
+		for (im = 0; im < 133; im++) {
+			if (im < 60) {
+				RateNewTBinfectionChild[im][ig2] = ForceOfInf[0][ig2];  // ages 0-4
+			}
+		else {
+			RateNewTBinfectionChild[im][ig2] = ForceOfInf[1][ig2];  // ages 5+
+		}
+		}
+	}
+	
 	/*if (CurrYear == 1985 && CurrMonth==0){
 		for (ia = 0; ia < 90; ia++){
 			RateNewTBinfection[ia][0] = 1.0 - pow((1.0 - InitLTBIprev[ia + 1]) /
@@ -11368,24 +11485,24 @@ void UpdateTBrecovLT(AdultTB* PostRxLT, AdultTB* Active1, AdultTB* Active2, Adul
 void UpdateChildTBsuscep(ChildTB* Suscep, ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev)
 {
 	int ia, is, ig;
-	double temp, temp2, newTBactive;
+	double temp, temp1, newTBactive;
 
 	ig = Suscep->Sex;
 	for (ia = 0; ia < 10; ia++) {
 		for (is = 0; is < 13; is++) {
-			if (is == 0) { temp2 = InitPaedTBSev[0]; }
-			else { temp2 = InitPaedTBSev[1]; }
-			temp = Suscep->ChildHIVstage[ia][is] * RateNewTBinfection[ia][ig];
-			Suscep->ChildHIVstage_E[ia][is] = Suscep->ChildHIVstage_E[ia][is] - temp;
+			if (is == 0) { temp = InitPaedTBSev[0]; }
+			else { temp = InitPaedTBSev[1]; }
+			temp1 = Suscep->ChildHIVstage[ia][is] * RateNewTBinfection[ia][ig];
+			Suscep->ChildHIVstage_E[ia][is] = Suscep->ChildHIVstage_E[ia][is] - temp1;
 			newTBactive = PropFastProgChild * HIVeffectChildTBinc[is]; // * TBincAdjByAgeSex[ia][ig]; Removed for now
 			if (newTBactive > 1.0) { newTBactive = 1.0; }
-			Latent->ChildHIVstage_E[ia][is] += temp * (1.0 - newTBactive);
-			Sev->ChildHIVstage_E[ia][is] += temp * newTBactive * temp2;
-			NonSev->ChildHIVstage_E[ia][is] += temp * newTBactive * (1.0 - temp2);
+			Latent->ChildHIVstage_E[ia][is] += temp1 * (1.0 - newTBactive);
+			Sev->ChildHIVstage_E[ia][is] += temp1 * newTBactive * temp;
+			NonSev->ChildHIVstage_E[ia][is] += temp1 * newTBactive * (1.0 - temp);
 			if (FixedUncertainty == 1) {
-				NewActiveChildTBbyAgeSex[ia][ig] += temp * newTBactive;
-				if (is >= 1) { NewHIVposChildTBbyAgeSex[ia][ig] += temp * newTBactive; }
-				if (is >= 9) { NewChildTBonARTbyAgeSex[ia][ig] += temp * newTBactive; } // Interrupted ART = stage 12, keeping this as "on ART" for now
+				NewActiveChildTBbyAgeSex[ia][ig] += temp1 * newTBactive;
+				if (is >= 1) { NewHIVposChildTBbyAgeSex[ia][ig] += temp1 * newTBactive; }
+				if (is >= 9) { NewChildTBonARTbyAgeSex[ia][ig] += temp1 * newTBactive; } // Interrupted ART = stage 12, keeping this as "on ART" for now
 			}
 		}
 	}
@@ -11394,7 +11511,7 @@ void UpdateChildTBsuscep(ChildTB* Suscep, ChildTB* Latent, ChildTB* Sev, ChildTB
 void UpdateChildTBlatent(ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev, ChildTB* IPT, ChildTB* Suscep, int IPTind)
 {
 	int ia, is, ig, iy;
-	double temp, temp2, temp3, newTBactive, TBincidence, ReactivationRate;
+	double temp, temp1, temp2, newTBactive, TBincidence, ReactivationRate;
 
 	iy = CurrYear - StartYear;
 	ig = Latent->Sex;
@@ -11405,8 +11522,8 @@ void UpdateChildTBlatent(ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev, ChildTB
 	// Leaving out complex TPT transitions for now, making it simple
 	for (ia = 0; ia < 10; ia++) {
 		for (is = 0; is < 13; is++) {
-			if (is == 0) { temp2 = InitPaedTBSev[0]; }
-			else { temp2 = InitPaedTBSev[1]; }
+			if (is == 0) { temp = InitPaedTBSev[0]; }
+			else { temp = InitPaedTBSev[1]; }
 			
 			newTBactive = PropFastProgChild * HIVeffectChildTBinc[is]; // * TBincAdjByAgeSex[ia][ig]; Removed for now
 			if (newTBactive > 1.0) { newTBactive = 1.0; }
@@ -11414,31 +11531,31 @@ void UpdateChildTBlatent(ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev, ChildTB
 			TBincidence = AnnualRiskMTBpaed[iy] * newTBactive / 12.0 + ReactivationRate * HIVeffectChildTBinc[is]; 
 			if (TBincidence > 1.0) { TBincidence = 1.0; }
 			
-			temp = Latent->ChildHIVstage[ia][is] * TBincidence;
+			temp1 = Latent->ChildHIVstage[ia][is] * TBincidence;
 
 			// TPT initiation for those not already on TPT
 			if (IPTind == 0 && ChildTPTuptake[iy] > 0.0) {
-				temp3 = Latent->ChildHIVstage_E[ia][is] * ChildTPTuptake[iy];
-				if (ChildTPTuptake[iy] > 1.0) { temp3 = Latent->ChildHIVstage_E[ia][is]; }
+				temp2 = Latent->ChildHIVstage[ia][is] * ChildTPTuptake[iy];
+				if (ChildTPTuptake[iy] > 1.0) { temp2 = Latent->ChildHIVstage[ia][is]; }
 			}
 			else {
-				temp3 = 0.0;
+				temp2 = 0.0;
 			}
 
-			Latent->ChildHIVstage_E[ia][is] = Latent->ChildHIVstage_E[ia][is] - temp - temp3;
-			Sev->ChildHIVstage_E[ia][is] += temp * temp2;
-			NonSev->ChildHIVstage_E[ia][is] += temp * (1.0 - temp2);
-			IPT->ChildHIVstage_E[ia][is] += temp3;
+			Latent->ChildHIVstage_E[ia][is] = Latent->ChildHIVstage_E[ia][is] - temp1 - temp2;
+			Sev->ChildHIVstage_E[ia][is] += temp1 * temp;
+			NonSev->ChildHIVstage_E[ia][is] += temp1 * (1.0 - temp);
+			IPT->ChildHIVstage_E[ia][is] += temp2;
 
 			if (FixedUncertainty == 1) {
-				NewActiveChildTBbyAgeSex[ia][ig] += temp;
-				if (is >= 1) { NewHIVposChildTBbyAgeSex[ia][ig] += temp; }
-				if (is >= 9) { NewChildTBonARTbyAgeSex[ia][ig] += temp; }
+				NewActiveChildTBbyAgeSex[ia][ig] += temp1;
+				if (is >= 1) { NewHIVposChildTBbyAgeSex[ia][ig] += temp1; }
+				if (is >= 9) { NewChildTBonARTbyAgeSex[ia][ig] += temp1; }
 				
 				NewChildTBreactivation += Latent->ChildHIVstage[ia][is] * ReactivationRate * HIVeffectChildTBinc[is] / 12.0;
 
 				if (IPTind == 0) {
-					NewChildTPT += temp3;
+					NewChildTPT += temp2;
 				}
 			}
 		}
@@ -11455,12 +11572,12 @@ void UpdateChildTBactive(ChildTB* Active, ChildTB* Latent, ChildTB* Treated, int
 	ig = Active->Sex;
 
 	if (Sev == 1) {
-		RxRate = HealthSeekChildTBSev / 12.0 * DiagChildSev * (1 - ChildILTFU);
+		RxRate = (HealthSeekChildTBSev / 12.0) * DiagChildSev * (1 - ChildILTFU);
 		MortRate = ChildTBmortSev / 12.0;
 		RecoveryRate = ChildTBrecovSev / 12.0;
 	}
 	else {
-		RxRate = HealthSeekChildTBNonSev / 12.0  * DiagChildNonSev * (1 - ChildILTFU);
+		RxRate = (HealthSeekChildTBNonSev / 12.0) * DiagChildNonSev * (1 - ChildILTFU);
 		MortRate = ChildTBmortNonSev / 12.0;
 		RecoveryRate = ChildTBrecovNonSev / 12.0;
 	}
@@ -11515,8 +11632,8 @@ void UpdateChildTBtreated(ChildTB* Treated, ChildTB* Active1, ChildTB* Active2, 
 	for (ia = 0; ia < 10; ia++) {
 		for (is = 0; is < 13; is++) {
 			
-			if (is == 0) { temp2 = InitPaedTBSev[0]; }
-			else { temp2 = InitPaedTBSev[1]; }
+			if (is == 0) { temp = InitPaedTBSev[0]; }
+			else { temp = InitPaedTBSev[1]; }
 
 			MortRate = ChildRxMort / 12.0 * HIVeffectChildTBmort[is];
 
@@ -11568,8 +11685,8 @@ void UpdateChildTBrecovST(ChildTB* PostRxST, ChildTB* PostRxLT, ChildTB* Active1
 	for (ia = 0; ia < 10; ia++) {
 		for (is = 0; is < 13; is++) {
 
-			if (is == 0) { temp2 = InitPaedTBSev[0]; }
-			else { temp2 = InitPaedTBSev[1]; }
+			if (is == 0) { temp = InitPaedTBSev[0]; }
+			else { temp = InitPaedTBSev[1]; }
 
 			newTBactive = PropFastProg * HIVeffectTBinc[is];
 			if (newTBactive > 1.0) { newTBactive = 1.0; }
@@ -11586,8 +11703,8 @@ void UpdateChildTBrecovST(ChildTB* PostRxST, ChildTB* PostRxLT, ChildTB* Active1
 
 			// TPT initiation for those not already on TPT
 			if (IPTind == 0 && ChildTPTuptake[iy] > 0.0) {
-				temp4 = PostRxST->ChildHIVstage_E[ia][is] * ChildTPTuptake[iy];
-				if (ChildTPTuptake[iy] > 1.0) { temp4 = PostRxST->ChildHIVstage_E[ia][is]; }
+				temp4 = PostRxST->ChildHIVstage[ia][is] * ChildTPTuptake[iy];
+				if (ChildTPTuptake[iy] > 1.0) { temp4 = PostRxST->ChildHIVstage[ia][is]; }
 			}
 			else {
 				temp4 = 0.0;
@@ -11624,7 +11741,7 @@ void UpdateChildTBrecovLT(ChildTB* PostRxLT, ChildTB* Active1, ChildTB* Active2,
 
 	int ia, is, ig, iy;
 	double ReactivationRate, newTBactive, TBincidence, TransitionToActive;
-	double temp, temp2, temp3, temp4;
+	double temp, temp1, temp2, temp3;
 
 	iy = CurrYear - StartYear;
 	ig = PostRxLT->Sex;
@@ -11634,8 +11751,8 @@ void UpdateChildTBrecovLT(ChildTB* PostRxLT, ChildTB* Active1, ChildTB* Active2,
 	for (ia = 0; ia < 10; ia++) {
 		for (is = 0; is < 13; is++) {
 
-			if (is == 0) { temp2 = InitPaedTBSev[0]; }
-			else { temp2 = InitPaedTBSev[1]; }
+			if (is == 0) { temp = InitPaedTBSev[0]; }
+			else { temp = InitPaedTBSev[1]; }
 
 			newTBactive = PropFastProgChild * HIVeffectChildTBinc[is];
 			if (newTBactive > 1.0) { newTBactive = 1.0; }
@@ -11643,21 +11760,21 @@ void UpdateChildTBrecovLT(ChildTB* PostRxLT, ChildTB* Active1, ChildTB* Active2,
 			if (TBincidence > 1.0) { TBincidence = 1.0; }
 			TransitionToActive = PostRxLT->ChildHIVstage[ia][is] * TBincidence;
 
-			temp2 = TransitionToActive * temp;
-			temp3 = TransitionToActive * (1.0 - temp);
+			temp1 = TransitionToActive * temp;
+			temp2 = TransitionToActive * (1.0 - temp);
 
 			if (IPTind == 0 && ChildTPTuptake[iy] > 0.0) {
-				temp4 = PostRxLT->ChildHIVstage_E[ia][is] * ChildTPTuptake[iy];
-				if (ChildTPTuptake[iy] > 1.0) { temp4 = PostRxLT->ChildHIVstage_E[ia][is]; }
+				temp3 = PostRxLT->ChildHIVstage[ia][is] * ChildTPTuptake[iy];
+				if (ChildTPTuptake[iy] > 1.0) { temp3 = PostRxLT->ChildHIVstage[ia][is]; }
 			}
 			else {
-				temp4 = 0.0;
+				temp3 = 0.0;
 			}
 
-			PostRxLT->ChildHIVstage_E[ia][is] -= (TransitionToActive + temp4);
-			Active1->ChildHIVstage_E[ia][is] += temp2;
-			Active2->ChildHIVstage_E[ia][is] += temp3;
-			IPT->ChildHIVstage_E[ia][is] += temp4;
+			PostRxLT->ChildHIVstage_E[ia][is] -= (TransitionToActive + temp3);
+			Active1->ChildHIVstage_E[ia][is] += temp1;
+			Active2->ChildHIVstage_E[ia][is] += temp2;
+			IPT->ChildHIVstage_E[ia][is] += temp3;
 
 			if (FixedUncertainty == 1) {
 				NewActiveChildTBbyAgeSex[ia][ig] += TransitionToActive;
@@ -11669,7 +11786,7 @@ void UpdateChildTBrecovLT(ChildTB* PostRxLT, ChildTB* Active1, ChildTB* Active2,
 				NewChildTBreactivation += PostRxLT->ChildHIVstage[ia][is] *	ReactivationRate * HIVeffectChildTBinc[is];
 
 				if (IPTind == 0) {
-					NewChildTPT += temp4;
+					NewChildTPT += temp3;
 				}
 			}
 		}
@@ -11680,7 +11797,7 @@ void CalcTBtransitions()
 {
 	int ia, is;
 
-	// Reset NewEntrants to zero
+	// Reset NewEntrants for adults to zero
 	for (ia = 0; ia < 81; ia++) {
 		for (is = 0; is < 44; is++) {
 			TBtreatedM.NewEntrants[ia][is] = 0.0;
@@ -11694,7 +11811,17 @@ void CalcTBtransitions()
 		}
 	}
 
+	// Reset NewEntrants for children to zero
+	for (ia = 0; ia < 10; ia++) {
+		for (is = 0; is < 13; is++) {
+			ChildTBtreatedF.NewEntrants[ia][is] = 0.0;
+			ChildTBtreatedM.NewEntrants[ia][is] = 0.0;
+		}
+	}
+
 	CalcTBforceOfInf();
+
+	// Adults
 	TBsuscepM.UpdateEndProfile();
 	TBlatentM.UpdateEndProfile();
 	TBactiveSmPosM.UpdateEndProfile();
@@ -11758,13 +11885,56 @@ void CalcTBtransitions()
 		UpdateTBtreated(&RR_TBtreated2ndM, &RR_TBtreated1stM, &TBactiveSmPosM, &TBactiveSmNegM, &TBactiveSmPosRR_M, &TBactiveSmNegRR_M, &TBrecoveredST_M, &TBrecST_IPT_M);
 		UpdateTBtreated(&RR_TBtreated2ndF, &RR_TBtreated1stF, &TBactiveSmPosF, &TBactiveSmNegF, &TBactiveSmPosRR_F, &TBactiveSmNegRR_F, &TBrecoveredST_F, &TBrecST_IPT_F);
 	}
+
+	// Children
+	ChildTBsuscepM.UpdateEndProfile();
+	ChildTBlatentM.UpdateEndProfile();
+	ChildTBactiveSevM.UpdateEndProfile();
+	ChildTBactiveNonSevM.UpdateEndProfile();
+	ChildTBtreatedM.UpdateEndProfile();
+	ChildTBrecoveredST_M.UpdateEndProfile();
+	ChildTBrecoveredLT_M.UpdateEndProfile();
+	ChildTBlatentIPT_M.UpdateEndProfile();
+	ChildTBrecST_IPT_M.UpdateEndProfile();
+	ChildTBrecLT_IPT_M.UpdateEndProfile();
+	ChildTBsuscepF.UpdateEndProfile();
+	ChildTBlatentF.UpdateEndProfile();
+	ChildTBactiveSevF.UpdateEndProfile();
+	ChildTBactiveNonSevF.UpdateEndProfile();
+	ChildTBtreatedF.UpdateEndProfile();
+	ChildTBrecoveredST_F.UpdateEndProfile();
+	ChildTBrecoveredLT_F.UpdateEndProfile();
+	ChildTBlatentIPT_F.UpdateEndProfile();
+	ChildTBrecST_IPT_F.UpdateEndProfile();
+	ChildTBrecLT_IPT_F.UpdateEndProfile();
+
+	UpdateChildTBsuscep(&ChildTBsuscepM, &ChildTBlatentM, &ChildTBactiveSevM, &ChildTBactiveNonSevM);
+	UpdateChildTBsuscep(&ChildTBsuscepF, &ChildTBlatentF, &ChildTBactiveSevF, &ChildTBactiveNonSevF);
+	UpdateChildTBlatent(&ChildTBlatentM, &ChildTBactiveSevM, &ChildTBactiveNonSevM, &ChildTBlatentIPT_M, &ChildTBsuscepM, 0);
+	UpdateChildTBlatent(&ChildTBlatentF, &ChildTBactiveSevF, &ChildTBactiveNonSevF, &ChildTBlatentIPT_F, &ChildTBsuscepF, 0);
+	UpdateChildTBactive(&ChildTBactiveSevM, &ChildTBlatentM, &ChildTBtreatedM, 1);
+	UpdateChildTBactive(&ChildTBactiveSevF, &ChildTBlatentF, &ChildTBtreatedF, 1);
+	UpdateChildTBactive(&ChildTBactiveNonSevM, &ChildTBlatentM, &ChildTBtreatedM, 0);
+	UpdateChildTBactive(&ChildTBactiveNonSevF, &ChildTBlatentF, &ChildTBtreatedF, 0);
+	UpdateChildTBtreated(&ChildTBtreatedM, &ChildTBactiveSevM, &ChildTBactiveNonSevM, &ChildTBrecoveredST_M, &ChildTBrecST_IPT_M);
+	UpdateChildTBtreated(&ChildTBtreatedF, &ChildTBactiveSevF, &ChildTBactiveNonSevF, &ChildTBrecoveredST_F, &ChildTBrecST_IPT_F);
+	UpdateChildTBrecovST(&ChildTBrecoveredST_M, &ChildTBrecoveredLT_M, &ChildTBactiveSevM, &ChildTBactiveNonSevM, &ChildTBrecST_IPT_M, &ChildTBsuscepM, 0);
+	UpdateChildTBrecovST(&ChildTBrecoveredST_F, &ChildTBrecoveredLT_F, &ChildTBactiveSevF, &ChildTBactiveNonSevF, &ChildTBrecST_IPT_F, &ChildTBsuscepF, 0);
+	UpdateChildTBrecovLT(&ChildTBrecoveredLT_M, &ChildTBactiveSevM, &ChildTBactiveNonSevM, &ChildTBrecLT_IPT_M, &ChildTBsuscepM, 0);
+	UpdateChildTBrecovLT(&ChildTBrecoveredLT_F, &ChildTBactiveSevF, &ChildTBactiveNonSevF, &ChildTBrecLT_IPT_F, &ChildTBsuscepF, 0);
+	if (ChildTPTuptake[CurrYear - StartYear] > 0.0) {
+		UpdateChildTBlatent(&ChildTBlatentIPT_M, &ChildTBactiveSevM, &ChildTBactiveNonSevM, &ChildTBlatentM, &ChildTBsuscepM, 1);
+		UpdateChildTBlatent(&ChildTBlatentIPT_F, &ChildTBactiveSevF, &ChildTBactiveNonSevF, &ChildTBlatentF, &ChildTBsuscepF, 1);
+		UpdateChildTBrecovST(&ChildTBrecST_IPT_M, &ChildTBrecoveredLT_M, &ChildTBactiveSevM, &ChildTBactiveNonSevM, &ChildTBrecoveredST_M, &ChildTBsuscepM, 1);
+		UpdateChildTBrecovST(&ChildTBrecST_IPT_F, &ChildTBrecoveredLT_F, &ChildTBactiveSevF, &ChildTBactiveNonSevF, &ChildTBrecoveredST_F, &ChildTBrecST_IPT_F, 1);
+	}
 }
 
 void GetHIVtoTBpopRatios()
 {
 	// Similar to TB_SumTBandHIVPopTotals function in Mmamapudi's code
-
-	int ia, is;
+	
+	int ia, is, im;
 	double temp1, temp2;
 
 	for (ia = 0; ia < 81; ia++) {
@@ -11810,6 +11980,45 @@ void GetHIVtoTBpopRatios()
 		SumTB[ia][0] = temp1;
 		SumTB[ia][1] = temp2;
 	}
+
+	for (im = 0; im < 133; im++){
+		temp1 = 0.0;
+		temp2 = 0.0;
+		for (is = 0; is < 13; is++){
+			SumChildTBgroupsM[im][is] = ChildTBsuscepM.ChildHIVstage[im][is] + ChildTBlatentM.ChildHIVstage[im][is] +
+				ChildTBactiveSevM.ChildHIVstage[im][is] + ChildTBactiveNonSevM.ChildHIVstage[im][is] + ChildTBtreatedM.ChildHIVstage[im][is] +
+				ChildTBrecoveredST_M.ChildHIVstage[im][is] + ChildTBrecoveredLT_M.ChildHIVstage[im][is] +
+				ChildTBlatentIPT_M.ChildHIVstage[im][is] + ChildTBrecST_IPT_M.ChildHIVstage[im][is] + ChildTBrecLT_IPT_M.ChildHIVstage[im][is];
+			SumChildTBgroupsF[im][is] = ChildTBsuscepF.ChildHIVstage[im][is] + ChildTBlatentF.ChildHIVstage[im][is] +
+				ChildTBactiveSevF.ChildHIVstage[im][is] + ChildTBactiveNonSevF.ChildHIVstage[im][is] + ChildTBtreatedF.ChildHIVstage[im][is] +
+				ChildTBrecoveredST_F.ChildHIVstage[im][is] + ChildTBrecoveredLT_F.ChildHIVstage[im][is] +
+				ChildTBlatentIPT_F.ChildHIVstage[im][is] + ChildTBrecST_IPT_F.ChildHIVstage[im][is] + ChildTBrecLT_IPT_F.ChildHIVstage[im][is];
+			temp1 += SumChildTBgroupsM[im][is];
+			temp2 += SumChildTBgroupsF[im][is];
+
+			if (SumChildTBgroupsM[im][is] > 0.0 && SumGroupsChildM[im][is] > 0.0) {
+				RatioHIVtoChildTBpopM[im][is] = SumGroupsChildM[im][is] / SumChildTBgroupsM[im][is];
+			}
+			if (SumChildTBgroupsF[im][is] > 0.0 && SumGroupsChildF[im][is] > 0.0) {
+				RatioHIVtoChildTBpopF[im][is] = SumGroupsChildF[im][is] / SumChildTBgroupsF[im][is];
+			}
+			if (SumChildTBgroupsM[im][is] >= 0.0 && SumGroupsChildM[im][is] == 0.0) {
+				RatioHIVtoChildTBpopM[im][is] = 0.0;
+			}
+			if (SumChildTBgroupsF[im][is] >= 0.0 && SumGroupsChildF[im][is] == 0.0) {
+				RatioHIVtoChildTBpopF[im][is] = 0.0;
+			}
+			if (SumChildTBgroupsM[im][is] == 0.0 && SumGroupsChildM[im][is] > 0.0) {
+				RatioHIVtoChildTBpopM[im][is] = -1.0;
+			}
+			if (SumChildTBgroupsF[im][is] == 0.0 && SumGroupsChildF[im][is] > 0.0) {
+				RatioHIVtoChildTBpopF[im][is] = -1.0;
+			}
+		}
+		SumChildTB[im][0] = temp1;
+		SumChildTB[im][1] = temp2;
+	}
+	
 }
 
 void BalanceTBpop()
@@ -11882,6 +12091,27 @@ void UpdateTBtotStart()
 		RR_TBtreated1stF.UpdateStartTotal();
 		RR_TBtreated2ndF.UpdateStartTotal();
 	}
+
+	ChildTBsuscepM.UpdateStartTotal();
+	ChildTBsuscepF.UpdateStartTotal();
+	ChildTBactiveSevM.UpdateStartTotal();
+	ChildTBactiveSevF.UpdateStartTotal();
+	ChildTBactiveNonSevM.UpdateStartTotal();
+	ChildTBactiveNonSevF.UpdateStartTotal();
+	ChildTBrecoveredLT_M.UpdateStartTotal();
+	ChildTBrecoveredLT_F.UpdateStartTotal();
+	ChildTBlatentM.UpdateStartTotal();
+	ChildTBlatentF.UpdateStartTotal();
+	ChildTBtreatedM.UpdateStartTotal();
+	ChildTBtreatedF.UpdateStartTotal();
+	ChildTBrecoveredST_M.UpdateStartTotal();
+	ChildTBrecoveredST_F.UpdateStartTotal();
+	ChildTBlatentIPT_M.UpdateStartTotal();
+	ChildTBlatentIPT_F.UpdateStartTotal();
+	ChildTBrecST_IPT_M.UpdateStartTotal();
+	ChildTBrecST_IPT_F.UpdateStartTotal();
+	ChildTBrecLT_IPT_M.UpdateStartTotal();
+	ChildTBrecLT_IPT_F.UpdateStartTotal();	
 }
 
 void GetTBcontactScreenPropns()
