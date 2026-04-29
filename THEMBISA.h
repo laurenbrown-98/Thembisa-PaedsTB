@@ -652,6 +652,9 @@ double EmpiricalAdj; ///< Time-varying adjustment to empirical Rx rate
 double TotTUTTtests; ///< Total Xpert tests performed under TUTT
 double TotTUTTdiag; ///< Total diagnoses under TUTT
 
+///< Paediatric TB outputs
+double ChildTBmortOnRx[86][2]; ///< TB deaths in treated children, by year and sex
+
 //==================================================================================
 ///< Parameters and arrays for age/sex-specific outputs (formerly 'Population' sheet)
 //==================================================================================
@@ -1093,8 +1096,12 @@ double InitChildLTBIprev[132]; ///< Initial prevalence of latent TB in children,
 double InitChildTBhistory[132][2]; ///< Initial history of TB in children, by age and sex
 double HIVeffectChildTBinc[13]; ///< RR of TB incidence in children
 double HIVeffectChildTBmort[13]; ///< RR of TB mortality in children
+double TBmortNonSev[133][2]; ///< Total TB deaths in children with non-severe TB, by age and sex
+double TBmortSev[133][2]; ///< Total TB deaths in children with severe TB, by age and sex
+double ChildTBmortTreated[133][2]; ///< Total TB deaths in children after treatment initiation, by age and
 double NewChildTBreactivation; ///< # new paediatric TB cases due to reactivation
-double NewChildTPT; ///< Children starting TPT, latently infected
+double NewRxChildTB[2]; ///< New paediatric TB cases starting Rx, by severity (0 = non-severe, 1 = severe)
+double NewChildTPT; ///< Children starting TPT, latently infected or completed treatment
 double SumChildTBgroupsM[133][13]; 
 double SumChildTBgroupsF[133][13];
 double SumChildTB[133][2];
@@ -1285,11 +1292,11 @@ double NewTBonARTbyAgeSex[81][2];
 double NewRecurrentTBbyAgeSex[81][2];
 double NewRelapseTBbyAgeSex[81][2];
 
-double NewActiveChildTBbyAgeSex[10][2];
-double NewHIVposChildTBbyAgeSex[10][2];
-double NewChildTBonARTbyAgeSex[10][2];
-double NewChildTBdeathsbyAgeSex[10][2];
-double NewChildTBTreatedByAgeSex[10][2];
+double NewActiveChildTBbyAgeSex[133][2];
+double NewHIVposChildTBbyAgeSex[133][2];
+double NewChildTBonARTbyAgeSex[133][2];
+double NewRelapseChildTBbyAgeSex[133][2];
+double NewRecurrentChildTBbyAgeSex[133][2];
 
 ///< Age-specific flow variables that are calculated from monthly outputs
 
