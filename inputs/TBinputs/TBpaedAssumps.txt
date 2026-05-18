@@ -8,7 +8,7 @@ RR_ChildTBmort_base
 5.0
 late_early_ChildTBmort
 2.38
-ARTvNone_ChildTBinc
+ARTvNone_ChildTBmort
 0.41
 PropFastProgChild
 0.15

@@ -1090,10 +1090,10 @@ double InitPaedTBSev[3][2]; ///< Propn of active TB that is initially severe in 
 ///< Variables/intermediate outputs that are calculated
 
 double RateNewTBinfectionChild[133][2]; ///< Monthly rate of new infection in children, by age and sex
-double InitPropnSev[132][2]; // Initial proportion of active TB that is severe in children, by age and sex
-double InitPropnNonSev[132][2]; // Initial proportion of active TB that is severe in children, by age and sex
-double InitChildLTBIprev[132]; ///< Initial prevalence of latent TB in children, by age
-double InitChildTBhistory[132][2]; ///< Initial history of TB in children, by age and sex
+double InitPropnSev[133][2]; ///< Initial proportion of active TB that is severe in children, by age and sex
+double InitPropnNonSev[133][2]; ///< Initial proportion of active TB that is non-severe in children, by age and sex
+double InitChildLTBIprev[133]; ///< Initial prevalence of latent TB in children, by monthly age
+double InitChildTBhistory[133][2]; ///< Initial history of TB in children, by monthly age and sex
 double HIVeffectChildTBinc[13]; ///< RR of TB incidence in children
 double HIVeffectChildTBmort[13]; ///< RR of TB mortality in children
 double TBmortNonSev[133][2]; ///< Total TB deaths in children with non-severe TB, by age and sex
@@ -1899,6 +1899,13 @@ void UpdateTBactive(AdultTB* Active, AdultTB* Latent, AdultTB* Treated, AdultTB*
 void UpdateTBtreated(AdultTB* Treated, AdultTB* Treated2, AdultTB* Active1, AdultTB* Active2, AdultTB* SmPosRR, AdultTB* SmNegRR, AdultTB* PostRx, AdultTB* IPT);
 void UpdateTBrecovST(AdultTB* PostRxST, AdultTB* PostRxLT, AdultTB* Active1, AdultTB* Active2, AdultTB* SmPosRR, AdultTB* SmNegRR, AdultTB* IPT, AdultTB* Suscep, int IPTind);
 void UpdateTBrecovLT(AdultTB* PostRxLT, AdultTB* Active1, AdultTB* Active2, AdultTB* SmPosRR, AdultTB* SmNegRR, AdultTB* IPT, AdultTB* Suscep, int IPTind);
+void UpdateChildTBsuscep(ChildTB* Suscep, ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev);
+void UpdateChildTBlatent(ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev, ChildTB* IPT, ChildTB* Suscep, int IPTind);
+void UpdateChildTBactive(ChildTB* Active, ChildTB* Latent, ChildTB* Treated, int Sev);
+void UpdateChildTBtreated(ChildTB* Treated, ChildTB* Active1, ChildTB* Active2, ChildTB* PostRx, ChildTB* IPT);
+void UpdateChildTBrecovST(ChildTB* PostRxST, ChildTB* PostRxLT, ChildTB* Active1, ChildTB* Active2, ChildTB* IPT, ChildTB* Suscep, int IPTind);
+void UpdateChildTBrecovLT(ChildTB* PostRxLT, ChildTB* Active1, ChildTB* Active2, ChildTB* IPT, ChildTB* Suscep, int IPTind);
+void UpdateChildTPTuptake();
 void CalcTBtransitions();
 void GetHIVtoTBpopRatios();
 void BalanceTBpop();
@@ -2972,3 +2979,15 @@ OutputByAge MaleTBdeathsAS(16, 56);
 OutputByAge FemTBdeathsAS(16, 56);
 OutputByAge MaleTBtreatAS(16, 56);
 OutputByAge FemTBtreatAS(16, 56);
+
+///< TB outputs: child TB (new section)
+PostOutputArray NewActiveChildTB(56);
+PostOutputArray NewActiveChildTBmale(56);
+PostOutputArray NewActiveChildTBfemale(56);
+PostOutputArray NewHIVposChildTB(56);
+PostOutputArray NewChildTBonART(56);
+PostOutputArray NewRxChildTBtotal(56);
+PostOutputArray NewChildTPTtotal(56);
+PostOutputArray ChildTBmortTreatedTotal(56);
+PostOutputArray NewRelapseChildTB(56);
+PostOutputArray NewRecurrentChildTB(56);
