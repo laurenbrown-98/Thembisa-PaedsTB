@@ -34,7 +34,7 @@ string ProvID = "NW"; ///< Choose from EC, FS, GT, KZ, LM, MP, NC, NW, WC
 const int UseBrassLogit = 0; ///< 1 if using Brass relational logit to get non-HIV mort over 1996-2018
 int PrEPorVM = 0; ///< 1 if allowing for PrEP or vaginal microbicides. Keep set to 0 as default; it
 				  ///< will automatically get recalculated if there is PrEP/VM rollout.
-const int IncludeTB = 0; ///< 1 if including TB simulations
+const int IncludeTB = 1; ///< 1 if including TB simulations
 const int IncludeDR_TB = 0; ///< 1 if including drug-resisant (DR) TB 
 const int FixedTBscreening = 0; ///< 1 = fix the rates of TB screening at the values generated in
 								///< the uncertainty analysis (only valid if FixedUncertainty = 1)
@@ -1086,6 +1086,8 @@ double ChildRelapseST; ///< Annual relapse rate in children recently cured from 
 ///< Initalization parameters
 
 double InitPaedTBSev[3][2]; ///< Propn of active TB that is initially severe in children by age and HIV status
+double ChildTPTuptake[86]; ///< Monthly TPT uptake rate in children (by year index)
+double ChildTPTpostRx[86]; ///< Monthly TPT uptake post-Rx in children (by year index)
 
 ///< Variables/intermediate outputs that are calculated
 
@@ -1493,8 +1495,8 @@ double TBprev2018[2]; ///< Modelled pulmonary TB prevalence in 2018, by sex
 ///< Priors and likelihood
 
 double LogLikelihood;
-const int MCMCdim = 49; ///< Number of parameters in uncertainty analysis
-const int MaxPriors = 145; ///< Number of input rows in Priors file (145 for HIV, 63 for TB)
+const int MCMCdim = 21; ///< Number of parameters in uncertainty analysis
+const int MaxPriors = 65; ///< Number of input rows in Priors file (145 for HIV, 63 for TB)
 int InclPriors[MaxPriors][2]; ///< Indicator of which priors are included (1st index) and if
 							  ///< included their index in MCMCdim (2nd index)
 double RandPrior[MCMCdim]; ///< Random numbers used to sample from prior in current simulation

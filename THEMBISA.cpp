@@ -2334,8 +2334,11 @@ void AdultTB::AdjustPopTotals()
 					HIVstage[ia][is] *= RatioHIVtoTBpopM[ia][is];
 				}
 				else {
-					HIVstage[ia][is] = SumGroupsM[ia][is] * Total[ia] /
-						SumTB[ia][0];
+					if (SumTB[ia][0] > 0.0) {
+						HIVstage[ia][is] = SumGroupsM[ia][is] * Total[ia] / SumTB[ia][0];
+					} else {
+						HIVstage[ia][is] = 0.0;
+					}
 				}
 			}
 			else {
@@ -2343,8 +2346,11 @@ void AdultTB::AdjustPopTotals()
 					HIVstage[ia][is] *= RatioHIVtoTBpopF[ia][is];
 				}
 				else {
-					HIVstage[ia][is] = SumGroupsF[ia][is] * Total[ia] /
-						SumTB[ia][1];
+					if (SumTB[ia][1] > 0.0) {
+						HIVstage[ia][is] = SumGroupsF[ia][is] * Total[ia] / SumTB[ia][1];
+					} else {
+						HIVstage[ia][is] = 0.0;
+					}
 				}
 			}
 		}
@@ -2456,8 +2462,11 @@ void ChildTB::AdjustPopTotals()
 					ChildHIVstage[im][is] *= RatioHIVtoChildTBpopM[im][is];
 				}
 				else {
-					ChildHIVstage[im][is] = SumGroupsChildM[im][is] * Total[im] /
-						SumChildTB[im][0];
+					if (SumChildTB[im][0] > 0.0) {
+						ChildHIVstage[im][is] = SumGroupsChildM[im][is] * Total[im] / SumChildTB[im][0];
+					} else {
+						ChildHIVstage[im][is] = 0.0;
+					}
 				}
 			}
 			else {
@@ -2465,8 +2474,11 @@ void ChildTB::AdjustPopTotals()
 					ChildHIVstage[im][is] *= RatioHIVtoChildTBpopF[im][is];
 				}
 				else {
-					ChildHIVstage[im][is] = SumGroupsChildF[im][is] * Total[im] /
-						SumChildTB[im][1];
+					if (SumChildTB[im][1] > 0.0) {
+						ChildHIVstage[im][is] = SumGroupsChildF[im][is] * Total[im] / SumChildTB[im][1];
+					} else {
+						ChildHIVstage[im][is] = 0.0;
+					}
 				}
 			}
 		}
@@ -11484,14 +11496,15 @@ void UpdateTBrecovLT(AdultTB* PostRxLT, AdultTB* Active1, AdultTB* Active2, Adul
 
 void UpdateChildTBsuscep(ChildTB* Suscep, ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev)
 {
-	int im, is, ig;
+	int im, is, ig, iag;
 	double temp, temp1, newTBactive;
 
 	ig = Suscep->Sex;
 	for (im = 0; im < 133; im++) {
+		iag = (im / 12 < 5) ? 0 : (im / 12 < 10) ? 1 : 2;
 		for (is = 0; is < 13; is++) {
-			if (is == 0) { temp = InitPaedTBSev[0]; }
-			else { temp = InitPaedTBSev[1]; }
+			if (is == 0) { temp = InitPaedTBSev[iag][0]; }
+			else { temp = InitPaedTBSev[iag][1]; }
 			temp1 = Suscep->ChildHIVstage[im][is] * RateNewTBinfectionChild[im][ig];
 			Suscep->ChildHIVstage_E[im][is] = Suscep->ChildHIVstage_E[im][is] - temp1;
 			newTBactive = PropFastProgChild * HIVeffectChildTBinc[is]; // * TBincAdjByAgeSex[ia][ig]; Removed for now
@@ -11510,7 +11523,7 @@ void UpdateChildTBsuscep(ChildTB* Suscep, ChildTB* Latent, ChildTB* Sev, ChildTB
 
 void UpdateChildTBlatent(ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev, ChildTB* IPT, ChildTB* Suscep, int IPTind)
 {
-	int im, is, ig, iy;
+	int im, is, ig, iy, iag;
 	double temp, temp1, temp2, newTBactive, TBincidence, ReactivationRate;
 
 	iy = CurrYear - StartYear;
@@ -11521,9 +11534,10 @@ void UpdateChildTBlatent(ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev, ChildTB
 
 	// Leaving out complex TPT transitions for now, making it simple
 	for (im = 0; im < 133; im++) {
+		iag = (im / 12 < 5) ? 0 : (im / 12 < 10) ? 1 : 2;
 		for (is = 0; is < 13; is++) {
-			if (is == 0) { temp = InitPaedTBSev[0]; }
-			else { temp = InitPaedTBSev[1]; }
+			if (is == 0) { temp = InitPaedTBSev[iag][0]; }
+			else { temp = InitPaedTBSev[iag][1]; }
 			
 			newTBactive = PropFastProgChild * HIVeffectChildTBinc[is]; // * TBincAdjByAgeSex[ia][ig]; Removed for now
 			if (newTBactive > 1.0) { newTBactive = 1.0; }
@@ -11612,7 +11626,7 @@ void UpdateChildTBactive(ChildTB* Active, ChildTB* Latent, ChildTB* Treated, int
 
 void UpdateChildTBtreated(ChildTB* Treated, ChildTB* Active1, ChildTB* Active2, ChildTB* PostRx, ChildTB* IPT)
 {
-	int im, is, ig, iy;
+	int im, is, ig, iy, iag;
 	double MortRate, DropoutRate, CompletionRate, CureRate, ReturnToActive, IPTafterRx;
 	double temp, temp1, temp2, temp3, temp4, temp4b, temp5, FullCure, PartialCure;
 
@@ -11631,10 +11645,11 @@ void UpdateChildTBtreated(ChildTB* Treated, ChildTB* Active1, ChildTB* Active2, 
 	IPTafterRx = ChildTPTpostRx[iy];
 
 	for (im = 0; im < 133; im++) {
+		iag = (im / 12 < 5) ? 0 : (im / 12 < 10) ? 1 : 2;
 		for (is = 0; is < 13; is++) {
-			
-			if (is == 0) { temp = InitPaedTBSev[0]; }
-			else { temp = InitPaedTBSev[1]; }
+
+			if (is == 0) { temp = InitPaedTBSev[iag][0]; }
+			else { temp = InitPaedTBSev[iag][1]; }
 
 			MortRate = ChildRxMort / 12.0 * HIVeffectChildTBmort[is];
 
@@ -11674,7 +11689,7 @@ void UpdateChildTBrecovST(ChildTB* PostRxST, ChildTB* PostRxLT, ChildTB* Active1
 	// IPTind = 0 for the group that's not currently on IPT, 1 for the group that is on IPT
 	// Currently not allowing for cure through TPT, but will apply later
 
-	int im, is, ig, iy;
+	int im, is, ig, iy, iag;
 	double RelapseRate, TransitionToLT, newTBactive, TBincidence;
 	double temp, temp1, temp2, temp3, temp3b, temp4;
 
@@ -11683,12 +11698,13 @@ void UpdateChildTBrecovST(ChildTB* PostRxST, ChildTB* PostRxLT, ChildTB* Active1
 
 	RelapseRate = ChildRelapseST / 12.0;
 	TransitionToLT = 1.0 / DurSTpostRxRisk;
-	
+
 	for (im = 0; im < 133; im++) {
+		iag = (im / 12 < 5) ? 0 : (im / 12 < 10) ? 1 : 2;
 		for (is = 0; is < 13; is++) {
 
-			if (is == 0) { temp = InitPaedTBSev[0]; }
-			else { temp = InitPaedTBSev[1]; }
+			if (is == 0) { temp = InitPaedTBSev[iag][0]; }
+			else { temp = InitPaedTBSev[iag][1]; }
 
 			newTBactive = PropFastProg * HIVeffectTBinc[is];
 			if (newTBactive > 1.0) { newTBactive = 1.0; }
@@ -11741,7 +11757,7 @@ void UpdateChildTBrecovLT(ChildTB* PostRxLT, ChildTB* Active1, ChildTB* Active2,
 {
 	// IPTind = 0 for the group that's not currently on IPT, 1 for the group that is on IPT
 
-	int im, is, ig, iy;
+	int im, is, ig, iy, iag;
 	double ReactivationRate, newTBactive, TBincidence, TransitionToActive;
 	double temp, temp1, temp2, temp3;
 
@@ -11749,12 +11765,13 @@ void UpdateChildTBrecovLT(ChildTB* PostRxLT, ChildTB* Active1, ChildTB* Active2,
 	ig = PostRxLT->Sex;
 
 	ReactivationRate = ChildTBreactivation * PastChildTBfactor / 12.0;
-	
+
 	for (im = 0; im < 133; im++) {
+		iag = (im / 12 < 5) ? 0 : (im / 12 < 10) ? 1 : 2;
 		for (is = 0; is < 13; is++) {
 
-			if (is == 0) { temp = InitPaedTBSev[0]; }
-			else { temp = InitPaedTBSev[1]; }
+			if (is == 0) { temp = InitPaedTBSev[iag][0]; }
+			else { temp = InitPaedTBSev[iag][1]; }
 
 			newTBactive = PropFastProgChild * HIVeffectChildTBinc[is];
 			if (newTBactive > 1.0) { newTBactive = 1.0; }
@@ -11814,7 +11831,7 @@ void CalcTBtransitions()
 	}
 
 	// Reset NewEntrants for children to zero
-	for (ia = 0; ia < 10; ia++) {
+	for (ia = 0; ia < 133; ia++) {
 		for (is = 0; is < 13; is++) {
 			ChildTBtreatedF.NewEntrants[ia][is] = 0.0;
 			ChildTBtreatedM.NewEntrants[ia][is] = 0.0;
@@ -12004,11 +12021,14 @@ void GetHIVtoTBpopRatios()
 			if (SumChildTBgroupsF[im][is] > 0.0 && SumGroupsChildF[im][is] > 0.0) {
 				RatioHIVtoChildTBpopF[im][is] = SumGroupsChildF[im][is] / SumChildTBgroupsF[im][is];
 			}
-			if (SumChildTBgroupsM[im][is] >= 0.0 && SumGroupsChildM[im][is] == 0.0) {
-				RatioHIVtoChildTBpopM[im][is] = 0.0;
+			if (SumGroupsChildM[im][is] == 0.0) {
+				// TB > 0 but HIV = 0: graduating children whose HIV slots were just zeroed by
+				// MoveIntoAdultGroups. Preserve TB states (ratio=1) so MoveIntoAdultTB can
+				// transfer them to the adult model. If TB is also 0, ratio is irrelevant.
+				RatioHIVtoChildTBpopM[im][is] = (SumChildTBgroupsM[im][is] > 0.0) ? 1.0 : 0.0;
 			}
-			if (SumChildTBgroupsF[im][is] >= 0.0 && SumGroupsChildF[im][is] == 0.0) {
-				RatioHIVtoChildTBpopF[im][is] = 0.0;
+			if (SumGroupsChildF[im][is] == 0.0) {
+				RatioHIVtoChildTBpopF[im][is] = (SumChildTBgroupsF[im][is] > 0.0) ? 1.0 : 0.0;
 			}
 			if (SumChildTBgroupsM[im][is] == 0.0 && SumGroupsChildM[im][is] > 0.0) {
 				RatioHIVtoChildTBpopM[im][is] = -1.0;
@@ -17311,6 +17331,7 @@ void MoveIntoAdultGroups()
 		MaleChild.OnARTlateAfter3m[im] = 0.0;
 		MaleChild.OnARTearly[im] = 0.0;
 		MaleChild.StoppedART[im] = 0.0;
+		MaleChild.Total[im] = 0.0;
 	}
 
 	// Uninfected females
@@ -17401,6 +17422,7 @@ void MoveIntoAdultGroups()
 		FemChild.OnARTlateAfter3m[im] = 0.0;
 		FemChild.OnARTearly[im] = 0.0;
 		FemChild.StoppedART[im] = 0.0;
+		FemChild.Total[im] = 0.0;
 	}
 }
 
