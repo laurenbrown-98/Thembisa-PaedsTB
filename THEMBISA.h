@@ -8,7 +8,6 @@
 
 using namespace std;
 
-// Hello world
 
 //=============================================================================
 ///< Parameters in the 'Projection' sheet & other settings
