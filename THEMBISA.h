@@ -1069,7 +1069,7 @@ double RR_ChildTPTuptake; ///< RR of TPT uptake in children, relative to adults
 double RR_postRxUptakeChild; ///< RR of TPT uptake post-Rx in children, relative to adults
 double ChildTBreactivation; ///< Annual reactivation rate in HIV-negative children
 double HealthSeekChildTBSev; ///< Annual rate of health seeking due to active TB symptoms in children with severe TB
-double HealthSeekChildTBNonSev; ///< Annual rate of health seeking due to active TB
+double HealthSeekChildTBNonSev; ///< Annual rate of health seeking due to active TB in children with non-severe TB
 double DiagChildSev; ///< Proportion of children with severe active TB who are diagnosed
 double DiagChildNonSev; ///< Proportion of children with non-severe active TB who are diagnosed
 double ChildILTFU; ///< Initial loss to follow-up in children diagnosed with active TB
@@ -2993,3 +2993,5 @@ PostOutputArray NewChildTPTtotal(56);
 PostOutputArray ChildTBmortTreatedTotal(56);
 PostOutputArray NewRelapseChildTB(56);
 PostOutputArray NewRecurrentChildTB(56);
+OutputByAge MaleChildTBincAS(15, 56); ///< New active child TB by annual age (0-14 yrs), males
+OutputByAge FemChildTBincAS(15, 56);  ///< New active child TB by annual age (0-14 yrs), females

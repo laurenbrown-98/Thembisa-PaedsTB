@@ -17428,51 +17428,88 @@ void MoveIntoAdultGroups()
 
 void MoveIntoAdultTB()
 {
-	int im, is, ic;
+	int im, is, ic, k, ns;
 	double PropSmPos;
+	double wEarly[4], wLate[4], Temp2;
+	double vM, vF, vM2, vF2;
 
-	// Fraction of children with SEVERE active TB who become smear-positive adults.
-	// The majority will be smear-negative because children generally have paucibacillary
-	// disease. The remainder of severe TB, plus ALL non-severe TB, becomes smear-negative.
-	// This is a placeholder value to be parameterised in the full model.
+	// Fraction of children with SEVERE active TB who become smear-positive adults. This is a placeholder 
+	// value to be parameterised in the full model.
 	PropSmPos = 0.05;
 
-	// HIV stage mapping (child stage ic -> adult stage is)
-	// The child TB model tracks 13 HIV stages (ic = 0..12) based on the Child HIV compartments.
-	// The adult TB model tracks 44 HIV stages (is = 0..43) based on the Adult HIV compartments.
-	// The mapping below mirrors MoveIntoAdultGroups(), which handles the HIV model transition.
+	// Adult stage layout (44 stages, is = 0..43):
+	//   is  0      : NegNoHCT                (HIV-, never tested)
+	//   is  1      : NegPastHCT              (HIV-, previously tested)
+	//   is  2      : RegHCT                  (HIV-, in regular HCT)
+	//   is  3      : RegPrEP                 (HIV-, on oral PrEP)
+	//   is  4      : RegVM                   (HIV-, on vaginal microbicide; females only)
+	//   is  5-9    : PosNoHCT[0..4]          (HIV+, never tested; [0]=acutely infected,
+	//                                          [1]=CD4>=500, [2]=350-499, [3]=200-349, [4]<200)
+	//   is 10-14   : PosHCTpreHIV[0..4]      (HIV+, previously tested HIV-negative; same CD4 layout)
+	//   is 15-19   : PosDiagnosedPreART[0..4] (HIV+, diagnosed, ART-naive; same CD4 layout)
+	//   is 20-24   : OnARTpre500[0..4]        (ART initiated at CD4>=500, by duration slot)
+	//   is 25-29   : OnART500[0..4]           (ART initiated at CD4 350-499, by duration slot)
+	//   is 30-34   : OnART350[0..4]           (ART initiated at CD4 200-349, by duration slot)
+	//   is 35-39   : OnART200[0..4]           (ART initiated at CD4 <200, by duration slot)
+	//   is 40-43   : StoppedART[0..3]         (interrupted ART, by CD4 group; 4 stages only)
 
-	// Adult stage layout:
-	//   is  0      : NegNoHCT           (HIV-negative, never tested)
-	//   is  1- 4   : NegPastHCT, RegHCT, RegPrEP, RegVM  (HIV-negative, tested/on PrEP)
-	//   is  5- 9   : PosNoHCT[0..4]     (HIV+, never tested, CD4 stages 0-4)
-	//   is 10-14   : PosHCTpreHIV[0..4] (HIV+, previously tested but uninfected, CD4 stages 0-4)
-	//   is 15-19   : PosDiagnosedPreART[0..4] (HIV+, diagnosed, ART-naive, CD4 stages 0-4)
-	//   is 20-24   : OnARTpre500[0..4]  (on ART, CD4 >=500 at initiation, by duration)
-	//   is 25-29   : OnART500[0..4]     (on ART, CD4 350-499 at initiation, by duration)
-	//   is 30-34   : OnART350[0..4]     (on ART, CD4 200-349 at initiation, by duration)
-	//   is 35-39   : OnART200[0..4]     (on ART, CD4 <200 at initiation, by duration)
-	//   is 40-43   : StoppedART[0..3]   (stopped ART, by CD4 group)
+	// Child HIV stages (ic = 0..12) are redistributed into adult stages using the same
+	// assumptions as MoveIntoAdultGroups(). Stages not listed below are intentionally empty,
+	// consistent with MoveIntoAdultGroups():
+	//   is=1-4  (tested HIV-): children enter as NegNoHCT only (no adult testing/PrEP history)
+	//   is=5    (acutely infected): 10-year-olds are not newly infected at transition
+	//   is=10-14 (PosHCTpreHIV): HIV+ children mapped to PosNoHCT (never tested)
+	//   is=20-24 (OnARTpre500): OnARTearly maps to OnART500 only
+	//   is=30-34 (OnART350): OnARTlate maps to OnART200 only
+	//   is=40-42 (StoppedART[0-2]): all StoppedART children mapped to StoppedART[3] = is=43
+	//
+	//   ic  0      : HIV-negative                   -> is=0  (direct)
+	//   ic  1,2,3  : HIV+ undiagnosed, early disease -> is=6,7,8 equally (CD4 500+/350-499/200-349)
+	//   ic  4      : HIV+ undiagnosed, ART-eligible  -> is=9  (CD4 <200, direct)
+	//   ic  5,6,7  : HIV+ diagnosed pre-ART, early   -> is=16,17,18 equally
+	//   ic  8      : HIV+ diagnosed pre-ART, late     -> is=19 (direct)
+	//   ic  9      : OnARTearly                       -> is=26..29 (OnART500 slots 1-4, by CumPaedARTearly)
+	//   ic  10,11  : OnARTlate (pooled)               -> is=36..39 (OnART200 slots 1-4, by CumPaedARTlate)
+	//   ic  12     : StoppedART                       -> is=43 (direct)
 
-	// Child stages:
-	//   ic  0 : HIV-negative (NegMatMF + NegChildFF etc.)
-	//   ic  1 : PosChildAtBirthNoPMTCT  -> like early undiagnosed HIV, CD4 stage 1
-	//   ic  2 : PosChildAtBirthPMTCT    -> like early undiagnosed HIV, CD4 stage 2
-	//   ic  3 : PosChildAfterBirth      -> like early undiagnosed HIV, CD4 stage 3
-	//   ic  4 : ARTeligible             -> late undiagnosed HIV, CD4 stage 4 (ART-eligible)
-	//   ic  5 : DiagChildAtBirthNoPMTCT -> like diagnosed pre-ART, CD4 stage 1
-	//   ic  6 : DiagChildAtBirthPMTCT   -> like diagnosed pre-ART, CD4 stage 2
-	//   ic  7 : DiagChildAfterBirth     -> like diagnosed pre-ART, CD4 stage 3
-	//   ic  8 : DiagARTeligible         -> like diagnosed pre-ART, CD4 stage 4 (ART-eligible)
-	//   ic  9 : OnARTearly              -> on ART, good CD4 (OnART500, duration group 1)
-	//   ic 10 : OnARTlate1st3m          -> on ART, low CD4, first 3 months (OnART200, grp 1)
-	//   ic 11 : OnARTlateAfter3m        -> on ART, low CD4, after 3 months (OnART200, grp 2)
-	//   ic 12 : StoppedART              -> stopped ART, assumed low CD4 (StoppedART, grp 3)
+	// Precompute ART duration distribution weights, mirroring the TempByS logic in MoveIntoAdultGroups().
+	// Duration slot 0 is not used for new entrants at age 10 (consistent with [is+1] in MoveIntoAdultGroups).
+	Temp2 = 0.0;
+	for (is = 0; is < 5; is++) Temp2 += CumPaedARTearly[10][is];
+	if (Temp2 > 0.0) {
+		for (k = 0; k < 3; k++) wEarly[k] = CumPaedARTearly[10][k] / Temp2;
+		wEarly[3] = (CumPaedARTearly[10][3] + CumPaedARTearly[10][4]) / Temp2;
+	} else {
+		for (k = 0; k < 4; k++) wEarly[k] = 0.25;
+	}
 
-	// Lookup table to decide which adult stage each child stage maps to based on the above definitions
-	static const int HIVmap[13] = { 0, 6, 7, 8, 9, 16, 17, 18, 19, 26, 36, 37, 43 };
+	Temp2 = 0.0;
+	for (is = 0; is < 5; is++) Temp2 += CumPaedARTlate[10][is];
+	if (Temp2 > 0.0) {
+		for (k = 0; k < 3; k++) wLate[k] = CumPaedARTlate[10][k] / Temp2;
+		wLate[3] = (CumPaedARTlate[10][3] + CumPaedARTlate[10][4]) / Temp2;
+	} else {
+		for (k = 0; k < 4; k++) wLate[k] = 0.25;
+	}
 
-	// Zero out the first adult TB age group - IS THIS NECESSARY? 
+	// Pointer arrays for the 8 non-active TB state pairs (suscep, latent, treated, recST,
+	// recLT, latentIPT, recST_IPT, recLT_IPT). Active TB is handled separately because
+	// it has two source objects (Sev, NonSev) mapping to two target objects (SmPos, SmNeg).
+	const int NS = 8;
+	ChildTB* cM[NS] = { &ChildTBsuscepM, &ChildTBlatentM, &ChildTBtreatedM,
+	                    &ChildTBrecoveredST_M, &ChildTBrecoveredLT_M,
+	                    &ChildTBlatentIPT_M, &ChildTBrecST_IPT_M, &ChildTBrecLT_IPT_M };
+	ChildTB* cF[NS] = { &ChildTBsuscepF, &ChildTBlatentF, &ChildTBtreatedF,
+	                    &ChildTBrecoveredST_F, &ChildTBrecoveredLT_F,
+	                    &ChildTBlatentIPT_F, &ChildTBrecST_IPT_F, &ChildTBrecLT_IPT_F };
+	AdultTB* aM[NS] = { &TBsuscepM, &TBlatentM, &TBtreatedM,
+	                    &TBrecoveredST_M, &TBrecoveredLT_M,
+	                    &TBlatentIPT_M, &TBrecST_IPT_M, &TBrecLT_IPT_M };
+	AdultTB* aF[NS] = { &TBsuscepF, &TBlatentF, &TBtreatedF,
+	                    &TBrecoveredST_F, &TBrecoveredLT_F,
+	                    &TBlatentIPT_F, &TBrecST_IPT_F, &TBrecLT_IPT_F };
+
+	// Zero out adult TB age group 0.
 	// AdultTB::UpdateDemog() has already shifted all existing adults to higher age groups,
 	// so age group 0 still holds last year's values and must be cleared before we add
 	// the incoming children.
@@ -17499,56 +17536,111 @@ void MoveIntoAdultTB()
 		TBrecLT_IPT_F.HIVstage[0][is] = 0.0;
 	}
 
-	// Accumulate 10-year-olds into adult TB age group 0
-	// Loop over the 12 monthly ages that make up the 10-year-old cohort (months 120-131).
-	// For each monthly age, loop over the 13 child HIV stages and add each child's TB
-	// state value to the corresponding adult TB state at the mapped adult HIV stage.
+	// Accumulate 10-year-olds (months 120-131) into adult TB age group 0.
+	// Each HIV group is handled separately to mirror MoveIntoAdultGroups() exactly.
 	for (im = 120; im < 132; im++) {
-		for (ic = 0; ic < 13; ic++) {
-			is = HIVmap[ic];
 
-			// Susceptible children > susceptible adults
-			TBsuscepM.HIVstage[0][is] += ChildTBsuscepM.ChildHIVstage[im][ic];
-			TBsuscepF.HIVstage[0][is] += ChildTBsuscepF.ChildHIVstage[im][ic];
-
-			// Latent TB children > latent TB adults
-			TBlatentM.HIVstage[0][is] += ChildTBlatentM.ChildHIVstage[im][ic];
-			TBlatentF.HIVstage[0][is] += ChildTBlatentF.ChildHIVstage[im][ic];
-
-			// Severe active TB children > split between smear-positive and smear-negative adults based on PropSmPos
-			TBactiveSmPosM.HIVstage[0][is] += ChildTBactiveSevM.ChildHIVstage[im][ic] * PropSmPos;
-			TBactiveSmNegM.HIVstage[0][is] += ChildTBactiveSevM.ChildHIVstage[im][ic] * (1.0 - PropSmPos);
-			TBactiveSmPosF.HIVstage[0][is] += ChildTBactiveSevF.ChildHIVstage[im][ic] * PropSmPos;
-			TBactiveSmNegF.HIVstage[0][is] += ChildTBactiveSevF.ChildHIVstage[im][ic] * (1.0 - PropSmPos);
-
-			// Non-severe active TB children > all smear-negative adults
-			TBactiveSmNegM.HIVstage[0][is] += ChildTBactiveNonSevM.ChildHIVstage[im][ic];
-			TBactiveSmNegF.HIVstage[0][is] += ChildTBactiveNonSevF.ChildHIVstage[im][ic];
-
-			// Children on TB treatment > adults on TB treatment
-			TBtreatedM.HIVstage[0][is] += ChildTBtreatedM.ChildHIVstage[im][ic];
-			TBtreatedF.HIVstage[0][is] += ChildTBtreatedF.ChildHIVstage[im][ic];
-
-			// Children recently recovered from TB > adults in short-term post-TB recovery
-			TBrecoveredST_M.HIVstage[0][is] += ChildTBrecoveredST_M.ChildHIVstage[im][ic];
-			TBrecoveredST_F.HIVstage[0][is] += ChildTBrecoveredST_F.ChildHIVstage[im][ic];
-
-			// Children with long-term post-TB history > adults in long-term post-TB state
-			TBrecoveredLT_M.HIVstage[0][is] += ChildTBrecoveredLT_M.ChildHIVstage[im][ic];
-			TBrecoveredLT_F.HIVstage[0][is] += ChildTBrecoveredLT_F.ChildHIVstage[im][ic];
-
-			// Children with latent TB on TPT > adults with latent TB on IPT
-			TBlatentIPT_M.HIVstage[0][is] += ChildTBlatentIPT_M.ChildHIVstage[im][ic];
-			TBlatentIPT_F.HIVstage[0][is] += ChildTBlatentIPT_F.ChildHIVstage[im][ic];
-
-			// Children recently recovered on TPT > adults in short-term post-TB recovery on IPT
-			TBrecST_IPT_M.HIVstage[0][is] += ChildTBrecST_IPT_M.ChildHIVstage[im][ic];
-			TBrecST_IPT_F.HIVstage[0][is] += ChildTBrecST_IPT_F.ChildHIVstage[im][ic];
-
-			// Children with long-term post-TB history on TPT > adults in long-term post-TB on IPT
-			TBrecLT_IPT_M.HIVstage[0][is] += ChildTBrecLT_IPT_M.ChildHIVstage[im][ic];
-			TBrecLT_IPT_F.HIVstage[0][is] += ChildTBrecLT_IPT_F.ChildHIVstage[im][ic];
+		// === Group 1: HIV-negative (ic=0) -> is=0, direct ===
+		for (ns = 0; ns < NS; ns++) {
+			aM[ns]->HIVstage[0][0] += cM[ns]->ChildHIVstage[im][0];
+			aF[ns]->HIVstage[0][0] += cF[ns]->ChildHIVstage[im][0];
 		}
+		TBactiveSmPosM.HIVstage[0][0] += ChildTBactiveSevM.ChildHIVstage[im][0] * PropSmPos;
+		TBactiveSmNegM.HIVstage[0][0] += ChildTBactiveSevM.ChildHIVstage[im][0] * (1.0 - PropSmPos) + ChildTBactiveNonSevM.ChildHIVstage[im][0];
+		TBactiveSmPosF.HIVstage[0][0] += ChildTBactiveSevF.ChildHIVstage[im][0] * PropSmPos;
+		TBactiveSmNegF.HIVstage[0][0] += ChildTBactiveSevF.ChildHIVstage[im][0] * (1.0 - PropSmPos) + ChildTBactiveNonSevF.ChildHIVstage[im][0];
+
+		// === Group 2: HIV+ undiagnosed ART-naive ===
+		// ic=1,2,3 (early disease) pooled equally into is=6,7,8 (CD4 500+/350-499/200-349).
+		// ic=4 (ART-eligible, late disease) -> is=9 (CD4 <200), direct.
+		for (ns = 0; ns < NS; ns++) {
+			vM = (cM[ns]->ChildHIVstage[im][1] + cM[ns]->ChildHIVstage[im][2] + cM[ns]->ChildHIVstage[im][3]) / 3.0;
+			vF = (cF[ns]->ChildHIVstage[im][1] + cF[ns]->ChildHIVstage[im][2] + cF[ns]->ChildHIVstage[im][3]) / 3.0;
+			for (is = 6; is <= 8; is++) { aM[ns]->HIVstage[0][is] += vM;  aF[ns]->HIVstage[0][is] += vF; }
+			aM[ns]->HIVstage[0][9] += cM[ns]->ChildHIVstage[im][4];
+			aF[ns]->HIVstage[0][9] += cF[ns]->ChildHIVstage[im][4];
+		}
+		vM  = (ChildTBactiveSevM.ChildHIVstage[im][1] + ChildTBactiveSevM.ChildHIVstage[im][2] + ChildTBactiveSevM.ChildHIVstage[im][3]) / 3.0;
+		vF  = (ChildTBactiveSevF.ChildHIVstage[im][1] + ChildTBactiveSevF.ChildHIVstage[im][2] + ChildTBactiveSevF.ChildHIVstage[im][3]) / 3.0;
+		vM2 = (ChildTBactiveNonSevM.ChildHIVstage[im][1] + ChildTBactiveNonSevM.ChildHIVstage[im][2] + ChildTBactiveNonSevM.ChildHIVstage[im][3]) / 3.0;
+		vF2 = (ChildTBactiveNonSevF.ChildHIVstage[im][1] + ChildTBactiveNonSevF.ChildHIVstage[im][2] + ChildTBactiveNonSevF.ChildHIVstage[im][3]) / 3.0;
+		for (is = 6; is <= 8; is++) {
+			TBactiveSmPosM.HIVstage[0][is] += vM * PropSmPos;
+			TBactiveSmNegM.HIVstage[0][is] += vM * (1.0 - PropSmPos) + vM2;
+			TBactiveSmPosF.HIVstage[0][is] += vF * PropSmPos;
+			TBactiveSmNegF.HIVstage[0][is] += vF * (1.0 - PropSmPos) + vF2;
+		}
+		TBactiveSmPosM.HIVstage[0][9] += ChildTBactiveSevM.ChildHIVstage[im][4] * PropSmPos;
+		TBactiveSmNegM.HIVstage[0][9] += ChildTBactiveSevM.ChildHIVstage[im][4] * (1.0 - PropSmPos) + ChildTBactiveNonSevM.ChildHIVstage[im][4];
+		TBactiveSmPosF.HIVstage[0][9] += ChildTBactiveSevF.ChildHIVstage[im][4] * PropSmPos;
+		TBactiveSmNegF.HIVstage[0][9] += ChildTBactiveSevF.ChildHIVstage[im][4] * (1.0 - PropSmPos) + ChildTBactiveNonSevF.ChildHIVstage[im][4];
+
+		// === Group 3: HIV+ diagnosed ART-naive ===
+		// ic=5,6,7 (early disease) pooled equally into is=16,17,18 (CD4 500+/350-499/200-349).
+		// ic=8 (ART-eligible, late disease) -> is=19 (CD4 <200), direct.
+		for (ns = 0; ns < NS; ns++) {
+			vM = (cM[ns]->ChildHIVstage[im][5] + cM[ns]->ChildHIVstage[im][6] + cM[ns]->ChildHIVstage[im][7]) / 3.0;
+			vF = (cF[ns]->ChildHIVstage[im][5] + cF[ns]->ChildHIVstage[im][6] + cF[ns]->ChildHIVstage[im][7]) / 3.0;
+			for (is = 16; is <= 18; is++) { aM[ns]->HIVstage[0][is] += vM;  aF[ns]->HIVstage[0][is] += vF; }
+			aM[ns]->HIVstage[0][19] += cM[ns]->ChildHIVstage[im][8];
+			aF[ns]->HIVstage[0][19] += cF[ns]->ChildHIVstage[im][8];
+		}
+		vM  = (ChildTBactiveSevM.ChildHIVstage[im][5] + ChildTBactiveSevM.ChildHIVstage[im][6] + ChildTBactiveSevM.ChildHIVstage[im][7]) / 3.0;
+		vF  = (ChildTBactiveSevF.ChildHIVstage[im][5] + ChildTBactiveSevF.ChildHIVstage[im][6] + ChildTBactiveSevF.ChildHIVstage[im][7]) / 3.0;
+		vM2 = (ChildTBactiveNonSevM.ChildHIVstage[im][5] + ChildTBactiveNonSevM.ChildHIVstage[im][6] + ChildTBactiveNonSevM.ChildHIVstage[im][7]) / 3.0;
+		vF2 = (ChildTBactiveNonSevF.ChildHIVstage[im][5] + ChildTBactiveNonSevF.ChildHIVstage[im][6] + ChildTBactiveNonSevF.ChildHIVstage[im][7]) / 3.0;
+		for (is = 16; is <= 18; is++) {
+			TBactiveSmPosM.HIVstage[0][is] += vM * PropSmPos;
+			TBactiveSmNegM.HIVstage[0][is] += vM * (1.0 - PropSmPos) + vM2;
+			TBactiveSmPosF.HIVstage[0][is] += vF * PropSmPos;
+			TBactiveSmNegF.HIVstage[0][is] += vF * (1.0 - PropSmPos) + vF2;
+		}
+		TBactiveSmPosM.HIVstage[0][19] += ChildTBactiveSevM.ChildHIVstage[im][8] * PropSmPos;
+		TBactiveSmNegM.HIVstage[0][19] += ChildTBactiveSevM.ChildHIVstage[im][8] * (1.0 - PropSmPos) + ChildTBactiveNonSevM.ChildHIVstage[im][8];
+		TBactiveSmPosF.HIVstage[0][19] += ChildTBactiveSevF.ChildHIVstage[im][8] * PropSmPos;
+		TBactiveSmNegF.HIVstage[0][19] += ChildTBactiveSevF.ChildHIVstage[im][8] * (1.0 - PropSmPos) + ChildTBactiveNonSevF.ChildHIVstage[im][8];
+
+		// === Group 4: On ART early (ic=9) -> OnART500 is=26..29 (slots 1-4) by wEarly ===
+		for (ns = 0; ns < NS; ns++) {
+			vM = cM[ns]->ChildHIVstage[im][9];
+			vF = cF[ns]->ChildHIVstage[im][9];
+			for (k = 0; k < 4; k++) { aM[ns]->HIVstage[0][26+k] += vM * wEarly[k];  aF[ns]->HIVstage[0][26+k] += vF * wEarly[k]; }
+		}
+		vM  = ChildTBactiveSevM.ChildHIVstage[im][9];    vM2 = ChildTBactiveNonSevM.ChildHIVstage[im][9];
+		vF  = ChildTBactiveSevF.ChildHIVstage[im][9];    vF2 = ChildTBactiveNonSevF.ChildHIVstage[im][9];
+		for (k = 0; k < 4; k++) {
+			TBactiveSmPosM.HIVstage[0][26+k] += vM * PropSmPos * wEarly[k];
+			TBactiveSmNegM.HIVstage[0][26+k] += (vM * (1.0 - PropSmPos) + vM2) * wEarly[k];
+			TBactiveSmPosF.HIVstage[0][26+k] += vF * PropSmPos * wEarly[k];
+			TBactiveSmNegF.HIVstage[0][26+k] += (vF * (1.0 - PropSmPos) + vF2) * wEarly[k];
+		}
+
+		// === Group 5: On ART late (ic=10,11 pooled) -> OnART200 is=36..39 (slots 1-4) by wLate ===
+		for (ns = 0; ns < NS; ns++) {
+			vM = cM[ns]->ChildHIVstage[im][10] + cM[ns]->ChildHIVstage[im][11];
+			vF = cF[ns]->ChildHIVstage[im][10] + cF[ns]->ChildHIVstage[im][11];
+			for (k = 0; k < 4; k++) { aM[ns]->HIVstage[0][36+k] += vM * wLate[k];  aF[ns]->HIVstage[0][36+k] += vF * wLate[k]; }
+		}
+		vM  = ChildTBactiveSevM.ChildHIVstage[im][10] + ChildTBactiveSevM.ChildHIVstage[im][11];
+		vF  = ChildTBactiveSevF.ChildHIVstage[im][10] + ChildTBactiveSevF.ChildHIVstage[im][11];
+		vM2 = ChildTBactiveNonSevM.ChildHIVstage[im][10] + ChildTBactiveNonSevM.ChildHIVstage[im][11];
+		vF2 = ChildTBactiveNonSevF.ChildHIVstage[im][10] + ChildTBactiveNonSevF.ChildHIVstage[im][11];
+		for (k = 0; k < 4; k++) {
+			TBactiveSmPosM.HIVstage[0][36+k] += vM * PropSmPos * wLate[k];
+			TBactiveSmNegM.HIVstage[0][36+k] += (vM * (1.0 - PropSmPos) + vM2) * wLate[k];
+			TBactiveSmPosF.HIVstage[0][36+k] += vF * PropSmPos * wLate[k];
+			TBactiveSmNegF.HIVstage[0][36+k] += (vF * (1.0 - PropSmPos) + vF2) * wLate[k];
+		}
+
+		// === Group 6: Stopped ART (ic=12) -> is=43, direct ===
+		for (ns = 0; ns < NS; ns++) {
+			aM[ns]->HIVstage[0][43] += cM[ns]->ChildHIVstage[im][12];
+			aF[ns]->HIVstage[0][43] += cF[ns]->ChildHIVstage[im][12];
+		}
+		TBactiveSmPosM.HIVstage[0][43] += ChildTBactiveSevM.ChildHIVstage[im][12] * PropSmPos;
+		TBactiveSmNegM.HIVstage[0][43] += ChildTBactiveSevM.ChildHIVstage[im][12] * (1.0 - PropSmPos) + ChildTBactiveNonSevM.ChildHIVstage[im][12];
+		TBactiveSmPosF.HIVstage[0][43] += ChildTBactiveSevF.ChildHIVstage[im][12] * PropSmPos;
+		TBactiveSmNegF.HIVstage[0][43] += ChildTBactiveSevF.ChildHIVstage[im][12] * (1.0 - PropSmPos) + ChildTBactiveNonSevF.ChildHIVstage[im][12];
 	}
 
 	// Zero out child TB arrays for the transferred cohort
@@ -18573,6 +18665,15 @@ void TBresultsAtEndOfYr()
         
         if (temp1 > 0.0) {
             NewChildTPTtotal.out[CurrSim - 1][iy] = NewChildTPT / temp1;  // proportion on TPT
+        }
+
+        // Age-specific child TB incidence: annual ages 0-9 from ChildTB (months 0-119)
+        // Ages 10-14 require adult TB arrays and are left zero for now
+        for (int ia = 0; ia < 10; ia++) {
+            for (int im = ia * 12; im < (ia + 1) * 12; im++) {
+                MaleChildTBincAS.out[ia][iy] += NewActiveChildTBbyAgeSex[im][0];
+                FemChildTBincAS.out[ia][iy]  += NewActiveChildTBbyAgeSex[im][1];
+            }
         }
     }
 
@@ -19968,6 +20069,12 @@ void GetTBoutputsByAge(const char* filout)
 	MaleTBtreatAS.GetMeans();
 	SummOutRow += 2;
 	FemTBtreatAS.GetMeans();
+
+	// Child TB incidence by annual age (0-14 years)
+	SummOutRow += 2;
+	MaleChildTBincAS.GetMeans();
+	SummOutRow += 2;
+	FemChildTBincAS.GetMeans();
 
 	for (i = 0; i < SummOutRow; i++) {
 		for (c = 0; c <= CurrYear - StartYear; c++) {
