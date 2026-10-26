@@ -1058,7 +1058,8 @@ double TBincRednNutrition; ///< Reduction in TB incidence due to nutrition
 //============================================================================
 
 ///< Transmission and natural history parameters
-double PropFastProgChild; ///< Proportion of children progressing to active TB soon after infection 
+double PropFastProgChild; ///< Proportion of children progressing to active TB soon after infection
+double RR_FastProgChildAge[4]; ///< Multiplier on PropFastProgChild by age (<1, 1-4, 5-9, 10); interim stand-in for f(x)
 double RR_ChildTBinc_base; ///< RR TB incidence in children in early-stage disease and not on ART vs HIV-
 double late_early_ChildTBinc; ///< Multiplier for RR TB incidence: late-stage vs early-stage HIV disease
 double ARTvNone_ChildTBinc; ///< Multiplier for RR TB incidence: on ART vs not on ART
@@ -1086,6 +1087,11 @@ double ChildRelapseST; ///< Annual relapse rate in children recently cured from 
 ///< Initalization parameters
 
 double InitPaedTBSev[3][2]; ///< Propn of active TB that is initially severe in children by age and HIV status
+double InitialActiveChildTB[3][2]; ///< Propn with initial active TB in children, by age group (0-4, 5-9, 10) and sex
+double InitPreviousChildTB[3][2]; ///< Initial prevalence of previous TB in children, by age group (0-4, 5-9, 10) and sex
+double InitChildLTBI[2]; ///< Parameters of the initial LTBI prevalence curve in children
+double InitChildLTBIscaling; ///< Scaling factor for initial LTBI prevalence in children
+double InitChildLTBImin; ///< Minimum initial LTBI prevalence in children (prevents a negative latent pool at age 0)
 double ChildTPTuptake[86]; ///< Monthly TPT uptake rate in children (by year index)
 double ChildTPTpostRx[86]; ///< Monthly TPT uptake post-Rx in children (by year index)
 
@@ -1901,6 +1907,7 @@ void UpdateTBactive(AdultTB* Active, AdultTB* Latent, AdultTB* Treated, AdultTB*
 void UpdateTBtreated(AdultTB* Treated, AdultTB* Treated2, AdultTB* Active1, AdultTB* Active2, AdultTB* SmPosRR, AdultTB* SmNegRR, AdultTB* PostRx, AdultTB* IPT);
 void UpdateTBrecovST(AdultTB* PostRxST, AdultTB* PostRxLT, AdultTB* Active1, AdultTB* Active2, AdultTB* SmPosRR, AdultTB* SmNegRR, AdultTB* IPT, AdultTB* Suscep, int IPTind);
 void UpdateTBrecovLT(AdultTB* PostRxLT, AdultTB* Active1, AdultTB* Active2, AdultTB* SmPosRR, AdultTB* SmNegRR, AdultTB* IPT, AdultTB* Suscep, int IPTind);
+double ChildFastProgAdj(int im); ///< Age multiplier on fast progression in children, by monthly age
 void UpdateChildTBsuscep(ChildTB* Suscep, ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev);
 void UpdateChildTBlatent(ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev, ChildTB* IPT, ChildTB* Suscep, int IPTind);
 void UpdateChildTBactive(ChildTB* Active, ChildTB* Latent, ChildTB* Treated, int Sev);

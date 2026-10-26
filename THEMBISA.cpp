@@ -2503,16 +2503,18 @@ void ChildTB::UpdateDemog()
 {
 	int im, ib, is;
 
+	// Called monthly at the end of CalcTBtransitions, so it ages the end-of-month (_E) arrays,
+	// which CopyEndToStart then copies to the start arrays.
 	for (im = 0; im < 132; im++) {
 		ib = 132 - im;
 		for (is = 0; is < 13; is++) {
-			ChildHIVstage[ib][is] = ChildHIVstage[ib - 1][is];
+			ChildHIVstage_E[ib][is] = ChildHIVstage_E[ib - 1][is];
 		}
 	}
-	
-	// NB: what about ChildHIVstage[0][is]? Setting to zero for now.
+
+	// Month 0 is filled with newborns (as TB-susceptible) in GetHIVtoTBpopRatios
 	for (is = 0; is < 13; is++) {
-		ChildHIVstage[0][is] = 0.0;
+		ChildHIVstage_E[0][is] = 0.0;
 	}
 }
 
@@ -5606,9 +5608,28 @@ void ReadInitChildTB()
 		exit(1);
 	}
 	file.ignore(255, '\n');
-	for (ia= 0; ia < 4; ia++) {
+	for (ia = 0; ia < 3; ia++) {
 		file >> InitPaedTBSev[ia][0] >> InitPaedTBSev[ia][1]; // 0 = HIV-, 1 = HIV+
 	}
+	file.ignore(255, '\n');
+	file.ignore(255, '\n');
+	for (ia = 0; ia < 3; ia++) {
+		file >> InitialActiveChildTB[ia][0] >> InitialActiveChildTB[ia][1]; // 0 = male, 1 = female
+	}
+	file.ignore(255, '\n');
+	file.ignore(255, '\n');
+	for (ia = 0; ia < 3; ia++) {
+		file >> InitPreviousChildTB[ia][0] >> InitPreviousChildTB[ia][1]; // 0 = male, 1 = female
+	}
+	file.ignore(255, '\n');
+	file.ignore(255, '\n');
+	file >> InitChildLTBI[0] >> InitChildLTBI[1];
+	file.ignore(255, '\n');
+	file.ignore(255, '\n');
+	file >> InitChildLTBIscaling;
+	file.ignore(255, '\n');
+	file.ignore(255, '\n');
+	file >> InitChildLTBImin;
 	file.close();
 }
 
@@ -5697,6 +5718,11 @@ void ReadChildTBAssumps()
 	file.ignore(255, '\n');
 	file.ignore(255, '\n');
 	file >> ChildRelapseST;
+	for (ia = 0; ia < 4; ia++) {
+		file.ignore(255, '\n');
+		file.ignore(255, '\n');
+		file >> RR_FastProgChildAge[ia];
+	}
 	file.close();
 }
 
@@ -6441,10 +6467,12 @@ void InitializeChildTBprofiles()
 		x2 = (int)x1;
 		if (x2 > 10) { x2 = 10; }
 
-		InitChildLTBIprev[im] = InitLTBIscaling * InitLTBI[0] * (1.0 - exp(-InitLTBI[1] * x2));
+		InitChildLTBIprev[im] = InitChildLTBIscaling * InitChildLTBI[0] * (1.0 - exp(-InitChildLTBI[1] * x2));
+		// The LTBI curve is zero at age 0, so apply a floor to avoid a negative latent pool
+		if (InitChildLTBIprev[im] < InitChildLTBImin) { InitChildLTBIprev[im] = InitChildLTBImin; }
 	}
 
-	// Set InitPropnSev and InitPropnNonSev by month
+	// Set InitPropnSev, InitPropnNonSev and InitChildTBhistory by month
 	for (ig = 0; ig < 2; ig++) {
 		for (im = 0; im < 133; im++) {
 			x1 = im / 12.0;
@@ -6456,15 +6484,9 @@ void InitializeChildTBprofiles()
 			else if (x2 < 10) { iag = 1; }    // ages 5-9
 			else { iag = 2; }                 // age 10 / transition band
 
-			InitPropnSev[im][ig] = InitialActiveTB[iag][ig] * InitPaedTBSev[iag][0];
-			InitPropnNonSev[im][ig] = InitialActiveTB[iag][ig] * (1.0 - InitPaedTBSev[iag][0]);
-		}
-	}
-
-	// Set InitChildTBhistory by month
-	for (ig = 0; ig < 2; ig++) {
-		for (im = 0; im < 133; im++) {
-			InitChildTBhistory[im][ig] = 0.0; // currently set to zero
+			InitPropnSev[im][ig] = InitialActiveChildTB[iag][ig] * InitPaedTBSev[iag][0];
+			InitPropnNonSev[im][ig] = InitialActiveChildTB[iag][ig] * (1.0 - InitPaedTBSev[iag][0]);
+			InitChildTBhistory[im][ig] = InitPreviousChildTB[iag][ig];
 		}
 	}
 
@@ -6492,6 +6514,10 @@ void InitializeChildTBprofiles()
 		ChildTBrecST_IPT_F.Total[im] = 0.0;
 		ChildTBrecLT_IPT_M.Total[im] = 0.0;
 		ChildTBrecLT_IPT_F.Total[im] = 0.0;
+		if (ChildTBlatentM.Total[im] < 0.0 || ChildTBlatentF.Total[im] < 0.0) {
+			cerr << "Negative initial child latent TB at month " << im << ": check InitPaedTBprev.txt\n";
+			exit(1);
+		}
 	}
 
 	// Split totals across initial HIV states
@@ -11494,6 +11520,15 @@ void UpdateTBrecovLT(AdultTB* PostRxLT, AdultTB* Active1, AdultTB* Active2, Adul
 	}
 }
 
+double ChildFastProgAdj(int im)
+{
+	// Simple age multiplier on PropFastProgChild, standing in for the age-dependent f(x)
+	if (im < 12) { return RR_FastProgChildAge[0]; }        // under 1
+	else if (im < 60) { return RR_FastProgChildAge[1]; }   // ages 1-4
+	else if (im < 120) { return RR_FastProgChildAge[2]; }  // ages 5-9
+	else { return RR_FastProgChildAge[3]; }                // age 10
+}
+
 void UpdateChildTBsuscep(ChildTB* Suscep, ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev)
 {
 	int im, is, ig, iag;
@@ -11507,7 +11542,7 @@ void UpdateChildTBsuscep(ChildTB* Suscep, ChildTB* Latent, ChildTB* Sev, ChildTB
 			else { temp = InitPaedTBSev[iag][1]; }
 			temp1 = Suscep->ChildHIVstage[im][is] * RateNewTBinfectionChild[im][ig];
 			Suscep->ChildHIVstage_E[im][is] = Suscep->ChildHIVstage_E[im][is] - temp1;
-			newTBactive = PropFastProgChild * HIVeffectChildTBinc[is]; // * TBincAdjByAgeSex[ia][ig]; Removed for now
+			newTBactive = PropFastProgChild * ChildFastProgAdj(im) * HIVeffectChildTBinc[is]; // * TBincAdjByAgeSex[ia][ig]; Removed for now
 			if (newTBactive > 1.0) { newTBactive = 1.0; }
 			Latent->ChildHIVstage_E[im][is] += temp1 * (1.0 - newTBactive);
 			Sev->ChildHIVstage_E[im][is] += temp1 * newTBactive * temp;
@@ -11539,10 +11574,11 @@ void UpdateChildTBlatent(ChildTB* Latent, ChildTB* Sev, ChildTB* NonSev, ChildTB
 			if (is == 0) { temp = InitPaedTBSev[iag][0]; }
 			else { temp = InitPaedTBSev[iag][1]; }
 			
-			newTBactive = PropFastProgChild * HIVeffectChildTBinc[is]; // * TBincAdjByAgeSex[ia][ig]; Removed for now
+			newTBactive = PropFastProgChild * ChildFastProgAdj(im) * HIVeffectChildTBinc[is]; // * TBincAdjByAgeSex[ia][ig]; Removed for now
 			if (newTBactive > 1.0) { newTBactive = 1.0; }
 
-			TBincidence = RateNewTBinfectionChild[im][ig] * newTBactive / 12.0 + ReactivationRate * HIVeffectChildTBinc[is]; 
+			// RateNewTBinfectionChild is already a monthly rate; ReactivationRate is annual
+			TBincidence = RateNewTBinfectionChild[im][ig] * newTBactive + ReactivationRate * HIVeffectChildTBinc[is] / 12.0;
 			if (TBincidence > 1.0) { TBincidence = 1.0; }
 			
 			temp1 = Latent->ChildHIVstage[im][is] * TBincidence;
@@ -11604,10 +11640,13 @@ void UpdateChildTBactive(ChildTB* Active, ChildTB* Latent, ChildTB* Treated, int
 			temp3 = Active->ChildHIVstage[im][is] * MortRate * HIVeffectChildTBmort[is];
 			
 			temp4 = temp1 + temp2 + temp3;
-			if (temp4 > Active->ChildHIVstage_E[im][is]) {
-				temp1 *= Active->ChildHIVstage_E[im][is] / temp4;
-				temp2 *= Active->ChildHIVstage_E[im][is] / temp4; 
-				temp3 *= Active->ChildHIVstage_E[im][is] / temp4;
+			// Cap total exits at the start-of-month stock (as in UpdateTBactive), keeping the split between exits.
+			// Needed because severe untreated mortality is ~10/yr, so monthly exits can exceed 100%.
+			if (temp4 > Active->ChildHIVstage[im][is]) {
+				temp1 *= Active->ChildHIVstage[im][is] / temp4;
+				temp2 *= Active->ChildHIVstage[im][is] / temp4;
+				temp3 *= Active->ChildHIVstage[im][is] / temp4;
+				temp4 = temp1 + temp2 + temp3;
 			}
 
 			Active->ChildHIVstage_E[im][is] = Active->ChildHIVstage_E[im][is] - temp4;
@@ -11697,7 +11736,7 @@ void UpdateChildTBrecovST(ChildTB* PostRxST, ChildTB* PostRxLT, ChildTB* Active1
 	ig = PostRxST->Sex;
 
 	RelapseRate = ChildRelapseST / 12.0;
-	TransitionToLT = 1.0 / DurSTpostRxRisk;
+	TransitionToLT = (1.0 / DurSTpostRxRisk) / 12.0;
 
 	for (im = 0; im < 133; im++) {
 		iag = (im / 12 < 5) ? 0 : (im / 12 < 10) ? 1 : 2;
@@ -11706,7 +11745,7 @@ void UpdateChildTBrecovST(ChildTB* PostRxST, ChildTB* PostRxLT, ChildTB* Active1
 			if (is == 0) { temp = InitPaedTBSev[iag][0]; }
 			else { temp = InitPaedTBSev[iag][1]; }
 
-			newTBactive = PropFastProg * HIVeffectTBinc[is];
+			newTBactive = PropFastProgChild * ChildFastProgAdj(im) * HIVeffectChildTBinc[is];
 			if (newTBactive > 1.0) { newTBactive = 1.0; }
 
 			TBincidence = RateNewTBinfectionChild[im][ig]* PastChildTBfactor * newTBactive + RelapseRate;
@@ -11773,9 +11812,9 @@ void UpdateChildTBrecovLT(ChildTB* PostRxLT, ChildTB* Active1, ChildTB* Active2,
 			if (is == 0) { temp = InitPaedTBSev[iag][0]; }
 			else { temp = InitPaedTBSev[iag][1]; }
 
-			newTBactive = PropFastProgChild * HIVeffectChildTBinc[is];
+			newTBactive = PropFastProgChild * ChildFastProgAdj(im) * HIVeffectChildTBinc[is];
 			if (newTBactive > 1.0) { newTBactive = 1.0; }
-			TBincidence = RateNewTBinfectionChild[im][ig] * PastChildTBfactor * newTBactive / 12.0 + ReactivationRate * HIVeffectChildTBinc[is];
+			TBincidence = RateNewTBinfectionChild[im][ig] * PastChildTBfactor * newTBactive + ReactivationRate * HIVeffectChildTBinc[is];
 			if (TBincidence > 1.0) { TBincidence = 1.0; }
 			TransitionToActive = PostRxLT->ChildHIVstage[im][is] * TBincidence;
 
@@ -11947,6 +11986,28 @@ void CalcTBtransitions()
 		UpdateChildTBrecovST(&ChildTBrecST_IPT_M, &ChildTBrecoveredLT_M, &ChildTBactiveSevM, &ChildTBactiveNonSevM, &ChildTBrecoveredST_M, &ChildTBsuscepM, 1);
 		UpdateChildTBrecovST(&ChildTBrecST_IPT_F, &ChildTBrecoveredLT_F, &ChildTBactiveSevF, &ChildTBactiveNonSevF, &ChildTBrecoveredST_F, &ChildTBrecST_IPT_F, 1);
 	}
+
+	// Age children by one month, mirroring Child::GetEndProfile() in the HIV model
+	ChildTBsuscepM.UpdateDemog();
+	ChildTBlatentM.UpdateDemog();
+	ChildTBactiveSevM.UpdateDemog();
+	ChildTBactiveNonSevM.UpdateDemog();
+	ChildTBtreatedM.UpdateDemog();
+	ChildTBrecoveredST_M.UpdateDemog();
+	ChildTBrecoveredLT_M.UpdateDemog();
+	ChildTBlatentIPT_M.UpdateDemog();
+	ChildTBrecST_IPT_M.UpdateDemog();
+	ChildTBrecLT_IPT_M.UpdateDemog();
+	ChildTBsuscepF.UpdateDemog();
+	ChildTBlatentF.UpdateDemog();
+	ChildTBactiveSevF.UpdateDemog();
+	ChildTBactiveNonSevF.UpdateDemog();
+	ChildTBtreatedF.UpdateDemog();
+	ChildTBrecoveredST_F.UpdateDemog();
+	ChildTBrecoveredLT_F.UpdateDemog();
+	ChildTBlatentIPT_F.UpdateDemog();
+	ChildTBrecST_IPT_F.UpdateDemog();
+	ChildTBrecLT_IPT_F.UpdateDemog();
 }
 
 void GetHIVtoTBpopRatios()
@@ -12040,7 +12101,19 @@ void GetHIVtoTBpopRatios()
 		SumChildTB[im][0] = temp1;
 		SumChildTB[im][1] = temp2;
 	}
-	
+
+	// Newborns: after monthly ageing, month 0 of the child TB arrays is empty while the HIV model
+	// already holds this month's births. Enter them as TB-susceptible (ratio of 1 keeps them as set).
+	for (is = 0; is < 13; is++) {
+		if (SumChildTB[0][0] == 0.0 && SumGroupsChildM[0][is] > 0.0) {
+			ChildTBsuscepM.ChildHIVstage[0][is] = SumGroupsChildM[0][is];
+			RatioHIVtoChildTBpopM[0][is] = 1.0;
+		}
+		if (SumChildTB[0][1] == 0.0 && SumGroupsChildF[0][is] > 0.0) {
+			ChildTBsuscepF.ChildHIVstage[0][is] = SumGroupsChildF[0][is];
+			RatioHIVtoChildTBpopF[0][is] = 1.0;
+		}
+	}
 }
 
 void BalanceTBpop()
@@ -17197,30 +17270,9 @@ void UpdateAllDemogTB()
 		RR_TBtreated2ndF.UpdateDemog();
 	}
 
-	// Move 10-year-olds into adult TB before aging child arrays, so months 120-131
-	// still hold the 10-year-old cohort (mirrors the ordering in UpdateAllDemog).
+	// Move 10-year-olds (months 120-131) into adult TB. Child TB arrays are aged monthly in
+	// CalcTBtransitions (not here), mirroring the child HIV model.
 	MoveIntoAdultTB();
-
-	ChildTBsuscepM.UpdateDemog();
-	ChildTBlatentM.UpdateDemog();
-	ChildTBactiveSevM.UpdateDemog();
-	ChildTBactiveNonSevM.UpdateDemog();
-	ChildTBtreatedM.UpdateDemog();
-	ChildTBrecoveredST_M.UpdateDemog();
-	ChildTBrecoveredLT_M.UpdateDemog();
-	ChildTBlatentIPT_M.UpdateDemog();
-	ChildTBrecST_IPT_M.UpdateDemog();
-	ChildTBrecLT_IPT_M.UpdateDemog();
-	ChildTBsuscepF.UpdateDemog();
-	ChildTBlatentF.UpdateDemog();
-	ChildTBactiveSevF.UpdateDemog();
-	ChildTBactiveNonSevF.UpdateDemog();
-	ChildTBtreatedF.UpdateDemog();
-	ChildTBrecoveredST_F.UpdateDemog();
-	ChildTBrecoveredLT_F.UpdateDemog();
-	ChildTBlatentIPT_F.UpdateDemog();
-	ChildTBrecST_IPT_F.UpdateDemog();
-	ChildTBrecLT_IPT_F.UpdateDemog();
 
 	// Recalculate totals
 	UpdateTBtotStart();

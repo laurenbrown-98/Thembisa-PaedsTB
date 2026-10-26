@@ -1,4 +1,18 @@
-Proportion of active TB that is severe
-0.12	0.22
-0.05	0.1
-0.02	0.05
+Proportion of active TB that is severe (HIV-neg, HIV-pos), by age group (0-4, 5-9, 10)
+0.080	0.143
+0.027	0.053
+0.026	0.050
+Initial active TB prevalence (male, female), by age group (0-4, 5-9, 10)
+0.009666	0.009666
+0.002203	0.002203
+0.001377	0.001377
+Prevalence of previous TB at baseline (male, female), by age group (0-4, 5-9, 10)
+0.002	0.002
+0.024	0.024
+0.027	0.027
+Latent TB parameters
+1.00	0.0284
+Latent TB scaling factor
+1.00
+Minimum initial latent TB prevalence (must exceed active + previous TB prevalence at age 0)
+0.014
